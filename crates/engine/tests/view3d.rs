@@ -97,3 +97,26 @@ fn the_compass_ring_twists_a_plan_view() {
     // A twisted plan view is drawn turned.
     assert!(st.projection().is_some());
 }
+
+#[test]
+fn a_drawing_saved_in_a_3d_view_opens_in_it() {
+    use cadcraft_engine::cmd::file::{IoHooks, set_io};
+    set_io(IoHooks {
+        read: |bytes, _| cadcraft_io::read_dxf(bytes).map_err(|e| e.to_string()),
+        write: |d, _| Ok(cadcraft_io::write_dxf(d).into_bytes()),
+        plot: None,
+    });
+    let mut s = session_with_a_column();
+    s.execute("vpoint", &json!({"preset": "neiso"})).unwrap();
+    let path = std::env::temp_dir().join(format!("cadcraft-view3d-{}.dxf", std::process::id()));
+    s.execute("saveas", &json!({"path": path.to_string_lossy()})).unwrap();
+    assert!(!s.state().unwrap().is_dirty(), "the view doesn't change the drawing");
+    s.execute("open", &json!({"path": path.to_string_lossy()})).unwrap();
+    assert_eq!(s.view_name(), "NE Isometric");
+    // Saved again in plan view, it opens in plan view.
+    s.execute("plan", &json!({})).unwrap();
+    s.execute("saveas", &json!({"path": path.to_string_lossy()})).unwrap();
+    s.execute("open", &json!({"path": path.to_string_lossy()})).unwrap();
+    let _ = std::fs::remove_file(&path);
+    assert_eq!(s.view_name(), "Top");
+}

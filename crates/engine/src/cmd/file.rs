@@ -137,6 +137,14 @@ fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<
     }
     // A drawing file is the drawing outside the Block Editor; an image is what is shown.
     let d: &cadcraft_doc::Drawing = if is_drawing_file(path) { s.state()?.drawing() } else { s.doc()? };
+    let with_view;
+    let d = match with_model_view(s, d, path) {
+        Some(v) => {
+            with_view = v;
+            &with_view
+        }
+        None => d,
+    };
     let r = if *opts == SaveAs::default() {
         (hooks.write)(d, path)
     } else {
@@ -144,6 +152,24 @@ fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<
         w(d, path, opts)
     };
     r.map_err(|e| bad(cmd, e))
+}
+
+/// The drawing with model space's 3D view in its `*Active` viewport (a single one), so a drawing
+/// file opens in it; `None` when there is nothing to add (plan view, tiled viewports, images).
+fn with_model_view(s: &Session, d: &cadcraft_doc::Drawing, path: &str) -> Option<cadcraft_doc::Drawing> {
+    let st = s.state().ok()?;
+    st.projection()?;
+    if !is_drawing_file(path) || d.vports.iter().any(|c| c.is_active() && c.tiles.len() > 1) {
+        return None;
+    }
+    let mut copy = d.clone();
+    let view3d = Some(cadcraft_doc::ViewDir { dir: st.view_dir, target: cadcraft_geom::Vec3::ZERO, twist: st.view_twist });
+    let tile = cadcraft_doc::VportTile { max: cadcraft_geom::Vec2::new(1.0, 1.0), view3d, ..Default::default() };
+    match copy.vports.iter_mut().find(|c| c.is_active()) {
+        Some(c) => c.tiles = vec![cadcraft_doc::VportTile { view3d, ..c.tiles.first().copied().unwrap_or(tile) }],
+        None => copy.vports.push(cadcraft_doc::VportConfig { name: cadcraft_doc::VportConfig::ACTIVE.into(), tiles: vec![tile] }),
+    }
+    Some(copy)
 }
 
 pub fn specs() -> Vec<CommandSpec> {

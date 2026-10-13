@@ -868,6 +868,30 @@ pub struct Viewport {
     /// Display on (MVIEW ON/OFF). An off viewport shows its border but no model space.
     #[serde(default = "yes")]
     pub on: bool,
+    /// A 3D view of model space (`view_center` is then in its view coordinates); `None`: plan view.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view3d: Option<ViewDir>,
+}
+/// A 3D view of model space as DXF stores it (VIEWPORT and VPORT groups 16/26/36 direction from
+/// the target towards the viewer, 17/27/37 target, 51 twist).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct ViewDir {
+    pub dir: Vec3,
+    #[serde(default)]
+    pub target: Vec3,
+    /// Radians, counterclockwise.
+    #[serde(default)]
+    pub twist: f64,
+}
+impl ViewDir {
+    /// WCS → its view coordinates.
+    pub fn matrix(&self) -> cadcraft_geom::Mat4 {
+        cadcraft_geom::Mat4::view(self.dir, self.target, self.twist)
+    }
+    /// Whether it differs from the plan view of the WCS, which `None` stands for.
+    pub fn is_3d(&self) -> bool {
+        !(self.target == Vec3::ZERO && self.matrix().is_plan())
+    }
 }
 impl Default for Viewport {
     fn default() -> Self {
@@ -883,6 +907,7 @@ impl Default for Viewport {
             layer_colors: Vec::new(),
             clip: None,
             on: true,
+            view3d: None,
         }
     }
 }

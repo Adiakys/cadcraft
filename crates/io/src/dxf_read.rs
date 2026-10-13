@@ -494,6 +494,7 @@ fn entity(kind: &str, tags: &[Tag]) -> Option<(Common, EntityKind)> {
             // Status flags: 65536 = non-rectangular clipping (by the 340 entity), 131072 = off.
             clip: t.s(340).and_then(|h| Handle::parse_hex(&h)).filter(|h| h.0 != 0 && t.i(90).unwrap_or(0) & 65536 != 0),
             on: t.i(90).unwrap_or(0) & 131072 == 0,
+            view3d: view_dir(&t),
         }),
         "WIPEOUT" => {
             let o = t.p(10);
@@ -1332,6 +1333,15 @@ fn annotative(tags: &[Tag]) -> bool {
     list.iter().filter(|t| t.code == 1070).nth(1).is_some_and(|t| t.i64() != 0)
 }
 
+/// The 3D view of a VIEWPORT or VPORT record (groups 16/26/36 direction, 17/27/37 target, 51
+/// twist in degrees), when it isn't the plan view of the WCS.
+fn view_dir(t: &T) -> Option<ViewDir> {
+    let dir = if t.f(16).is_some() { t.p(16) } else { Vec3::Z };
+    let v = ViewDir { dir, target: t.p(17), twist: t.fd(51, 0.0).to_radians() };
+    let usable = dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite() && v.twist.is_finite();
+    (usable && v.is_3d()).then_some(v)
+}
+
 /// A text style's font: CADCraft's own font name from `CADCRAFT` xdata (`1000 FONT`, name)
 /// while the font file is still the `txt` written for other readers; the TrueType family of the
 /// style's `ACAD` xdata (`1000` typeface) when it has no font file (how AutoCAD stores TrueType
@@ -1549,8 +1559,9 @@ fn tables(tags: &[Tag], d: &mut Drawing, rx: &mut Rx) {
             _ => {}
         }
     }
-    // One *Active viewport is no tiling: the view is the editor's (it zooms to the extents).
-    d.vports.retain(|c| c.tiles.len() > usize::from(c.is_active()));
+    // One *Active viewport is no tiling: the view is the editor's (it zooms to the extents), kept
+    // only when it is a 3D view for the editor to open in.
+    d.vports.retain(|c| c.tiles.len() > usize::from(c.is_active()) || c.tiles.iter().any(|t| t.view3d.is_some()));
 }
 
 /// Most tiles a viewport configuration keeps.
@@ -1574,7 +1585,7 @@ fn vport_record(d: &mut Drawing, t: &T) {
     }
     let aspect = t.f(41).filter(|a| a.is_finite() && *a > 0.0).unwrap_or(0.0);
     let clamp = |p: Vec2| Vec2::new(p.x.clamp(0.0, 1.0), p.y.clamp(0.0, 1.0));
-    let tile = VportTile { min: clamp(min), max: clamp(max), center, height, aspect };
+    let tile = VportTile { min: clamp(min), max: clamp(max), center, height, aspect, view3d: view_dir(t) };
     let name = if name.eq_ignore_ascii_case(VportConfig::ACTIVE) { VportConfig::ACTIVE.to_string() } else { name };
     let room = d.vports.len() < MAX_OBJECTS;
     match d.vports.iter_mut().find(|c| c.name.eq_ignore_ascii_case(&name)) {

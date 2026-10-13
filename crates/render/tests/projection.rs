@@ -125,3 +125,29 @@ fn shaded_faces_are_filled_lit_and_drawn_back_to_front() {
     let wire = build(&d, &Space::Model, &Options { projection: Some(iso), ..Options::default() });
     assert!(wire.prims.iter().all(|p| p.kind != Kind::Tris));
 }
+
+#[test]
+fn a_layout_viewport_shows_model_space_from_its_view_direction() {
+    let mut d = Drawing::new_metric();
+    // A 10 high column.
+    d.add(&Space::Model, Common::default(), line(Vec3::ZERO, Vec3::new(0.0, 0.0, 10.0))).unwrap();
+    let paper = Space::Paper(d.layouts[0].name.clone());
+    // Seen from the front at 1:1, centred on the column's middle: it stands 10 high on paper.
+    let vp = cadcraft_doc::Viewport {
+        center: Vec3::new(50.0, 50.0, 0.0),
+        width: 40.0,
+        height: 40.0,
+        view_center: cadcraft_geom::Vec2::new(0.0, 5.0),
+        view_height: 40.0,
+        id: 2,
+        view3d: Some(cadcraft_doc::ViewDir { dir: Vec3::new(0.0, -1.0, 0.0), target: Vec3::ZERO, twist: 0.0 }),
+        ..cadcraft_doc::Viewport::default()
+    };
+    d.add(&paper, Common::default(), EntityKind::Viewport(vp)).unwrap();
+    let l = build(&d, &paper, &Options::default());
+    // Model space drawn in a viewport isn't pickable on the layout: no handle.
+    let column: Vec<_> = l.prims.iter().filter(|p| p.handle == Handle(0)).map(|p| l.points(p)).collect();
+    assert_eq!(column.len(), 1);
+    let (a, b) = (column[0][0], column[0][1]);
+    assert!((a.x - 50.0).abs() < 1e-6 && (b.x - 50.0).abs() < 1e-6 && (a.y - 45.0).abs() < 1e-6 && (b.y - 55.0).abs() < 1e-6, "{a:?} {b:?}");
+}

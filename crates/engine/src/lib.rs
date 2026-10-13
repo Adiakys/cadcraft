@@ -773,7 +773,11 @@ impl Session {
         self.active = self.docs.len() - 1;
         self.active
     }
-    pub fn open_drawing(&mut self, d: Drawing, title: &str, path: Option<String>) -> usize {
+    pub fn open_drawing(&mut self, mut d: Drawing, title: &str, path: Option<String>) -> usize {
+        // A drawing saved in a 3D view of model space opens in it: the view is the editor's, the
+        // single *Active viewport that carries it isn't kept.
+        let single = d.vports.iter().position(|c| c.is_active() && c.tiles.len() == 1);
+        let saved = single.and_then(|i| d.vports.remove(i).tiles[0].view3d);
         let mut st = DocState::new(d, title, path);
         let ext = st.doc.extents(&Space::Model);
         if !ext.is_empty() {
@@ -782,9 +786,16 @@ impl Session {
                 height: (ext.height().max(ext.width() * self.viewport_px.1 / self.viewport_px.0.max(1.0)) * 1.1).max(1e-6),
             });
         }
+        if let Some(v) = saved {
+            st.view_dir = v.dir * (1.0 / v.dir.len());
+            st.view_twist = v.twist;
+        }
         self.end_running();
         self.docs.push(st);
         self.active = self.docs.len() - 1;
+        if saved.is_some() {
+            let _ = self.zoom_extents();
+        }
         self.active
     }
     /// A command still waiting for input belongs to the drawing it started in: end it there

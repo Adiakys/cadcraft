@@ -567,13 +567,17 @@ fn build_space(d: &Drawing, space: &Space, opts: &Options, plotting: bool) -> Di
 
 /// The built list, with the faces of a shaded 3D view first, farthest first (painter's order):
 /// everything else is drawn over them.
-fn finish(mut b: Builder) -> DisplayList {
-    if b.faces.is_empty() {
-        return b.list;
+fn finish(b: Builder) -> DisplayList {
+    faces_first(b.faces, b.list)
+}
+
+fn faces_first(mut faces: Vec<project::ShadedFace>, rest: DisplayList) -> DisplayList {
+    if faces.is_empty() {
+        return rest;
     }
-    b.faces.sort_by(|x, y| x.depth.total_cmp(&y.depth));
-    let mut list = DisplayList::default();
-    for f in b.faces {
+    faces.sort_by(|x, y| x.depth.total_cmp(&y.depth));
+    let mut list = DisplayList { sheet: rest.sheet, ..DisplayList::default() };
+    for f in faces {
         let start = list.tris.len() as u32;
         for p in &f.tris {
             list.bounds.add(*p);
@@ -590,7 +594,7 @@ fn finish(mut b: Builder) -> DisplayList {
             len: f.tris.len() as u32,
         });
     }
-    append(&mut list, b.list);
+    append(&mut list, rest);
     list
 }
 
@@ -784,12 +788,15 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
     // PSLTSCALE on: model-space dashes are scaled so they measure the same on paper as in
     // paper space, whatever the viewport scale.
     let lt_factor = if d.header.i64("PSLTSCALE", 1) != 0 { 1.0 / s } else { 1.0 };
-    let ctx = || Ctx { lt_factor, ..top_ctx(d, xf, VIEWPORT_CONTENT, &vp.frozen_layers, &vp.layer_colors) };
+    // A 3D view: model space → its view coordinates → paper. The window above is in view
+    // coordinates then, so objects aren't culled by their plan bounds.
+    let view = vp.view3d.map(|v| Mat4::from_mat3(&xf).mul(&v.matrix()));
+    let ctx = || Ctx { lt_factor, view, ..top_ctx(d, xf, VIEWPORT_CONTENT, &vp.frozen_layers, &vp.layer_colors) };
     let seen = |me: &Entity| {
         if matches!(me.kind, EntityKind::Viewport(_)) {
             return false;
         }
-        if matches!(me.kind, EntityKind::Ray(_) | EntityKind::XLine(_)) {
+        if view.is_some() || matches!(me.kind, EntityKind::Ray(_) | EntityKind::XLine(_)) {
             return true;
         }
         let eb = cadcraft_doc::entity_bounds(d, me, 0);
@@ -817,7 +824,7 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
             let ents: Vec<&std::sync::Arc<Entity>> = d.model.iter().collect();
             let budget = std::sync::atomic::AtomicUsize::new(0);
             let opts = b.opts;
-            let parts: Vec<DisplayList> = ents
+            let parts: Vec<(DisplayList, Vec<project::ShadedFace>)> = ents
                 .par_chunks(PARALLEL_CHUNK)
                 .map(|chunk| {
                     let mut part = Builder {
@@ -834,11 +841,12 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
                     for me in chunk.iter().filter(|me| seen(me)) {
                         entity(&mut part, &c, me);
                     }
-                    part.list
+                    (part.list, part.faces)
                 })
                 .collect();
-            for part in parts {
+            for (part, faces) in parts {
                 append(&mut sub.list, part);
+                sub.faces.extend(faces);
             }
         }
     } else {
@@ -847,6 +855,7 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
             entity(&mut sub, &c, me);
         }
     }
+    sub.list = faces_first(std::mem::take(&mut sub.faces), std::mem::take(&mut sub.list));
     // Plotted text glyphs move to the layout's list; their outlines carry the glyph's index there
     // in their handle's high half until clipped (see `take_viewport_layers`).
     for t in std::mem::take(&mut sub.list.texts) {
