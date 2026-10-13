@@ -19,6 +19,7 @@ pub mod paper;
 pub mod pen;
 mod plotstyle;
 mod point;
+mod project;
 pub mod raster;
 mod text;
 mod tolerance;
@@ -27,7 +28,7 @@ mod wide;
 
 use cadcraft_color::{Color, Rgb};
 use cadcraft_doc::{Drawing, Entity, EntityKind, Handle, Lineweight, Prim, Space};
-use cadcraft_geom::{Bounds2, Mat3, Polyline, Vec2};
+use cadcraft_geom::{Bounds2, Mat3, Mat4, Polyline, Vec2};
 use pen::Pen;
 
 pub use dim::{ArrowGeom, Arrowhead, DimGeometry, DimText, LineRole, arrowhead, dimension_geometry, dimension_geometry_with, format_linear_value};
@@ -226,6 +227,9 @@ pub struct Options {
     /// rebuild the view no longer needs). A cancelled build returns a partial list, which the
     /// caller must discard; see [`Options::cancelled`].
     pub cancel: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+    /// A parallel 3D view of model space: WCS → view coordinates ([`Mat4::view`]); the list is
+    /// in view coordinates. `None` = plan view. Layouts are always drawn in plan.
+    pub projection: Option<Mat4>,
 }
 
 impl Options {
@@ -249,6 +253,7 @@ impl Default for Options {
             skip_viewport: None,
             transparency: false,
             cancel: None,
+            projection: None,
         }
     }
 }
@@ -286,6 +291,9 @@ struct Ctx<'a> {
     block_pstyle: Option<usize>,
     /// Transparency (percent) of the block reference being expanded, for `ByBlock`.
     block_transparency: u8,
+    /// In a 3D view, the transform from this context's coordinates to the list ([`project`]):
+    /// it gives `xf` for each object's plane. `None` in plan view.
+    view: Option<Mat4>,
 }
 
 impl Ctx<'_> {
@@ -498,6 +506,7 @@ fn top_ctx<'a>(d: &'a Drawing, xf: Mat3, top: Handle, frozen: &'a [String], vp_c
         lt_factor: 1.0,
         block_pstyle: None,
         block_transparency: 0,
+        view: None,
     }
 }
 
@@ -527,7 +536,8 @@ fn build_space(d: &Drawing, space: &Space, opts: &Options, plotting: bool) -> Di
                 }
                 continue;
             }
-            entity(&mut b, &top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]), e);
+            let view = if paper { None } else { opts.projection };
+            entity(&mut b, &Ctx { view, ..top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]) }, e);
         }
     }
     // A layout is drawn in paper units, so its pens become geometry now.
@@ -558,7 +568,7 @@ fn build_parallel(b: &mut Builder, d: &Drawing, store: &cadcraft_doc::EntityStor
             let mut part =
                 Builder { list: DisplayList::default(), opts, plotting, styles: None, named: None, shared_budget: Some(&budget), transparency: 0 };
             for e in chunk {
-                entity(&mut part, &top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]), e);
+                entity(&mut part, &Ctx { view: opts.projection, ..top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]) }, e);
             }
             part.list
         })
@@ -902,7 +912,7 @@ pub fn build_entities<'a, I: IntoIterator<Item = &'a Entity>>(d: &Drawing, ents:
     };
     let mut b = Builder { list: DisplayList::default(), opts, plotting: false, styles: None, named: None, shared_budget: None, transparency: 0 };
     for e in ents {
-        entity(&mut b, &top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]), e);
+        entity(&mut b, &Ctx { view: opts.projection, ..top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]) }, e);
     }
     b.list
 }
@@ -1012,7 +1022,14 @@ fn entity(b: &mut Builder, ctx: &Ctx, e: &Entity) {
     // draws (block contents set their own).
     let (saved, saved_transparency) = (b.named, b.transparency);
     b.named = b.styles.and_then(|s| s.named_index(ctx, &e.common));
-    entity_parts(b, ctx, e);
+    match &ctx.view {
+        // 3D view: 3D geometry already in view coordinates, flat objects through their plane's map.
+        Some(v) => match project::in_view(e, v) {
+            Some(in_view) => entity_parts(b, &Ctx { xf: Mat3::IDENTITY, view: None, ..ctx.clone() }, &in_view),
+            None => entity_parts(b, &Ctx { xf: v.plane(project::elevation(&e.kind)), ..ctx.clone() }, e),
+        },
+        None => entity_parts(b, ctx, e),
+    }
     b.named = saved;
     b.transparency = saved_transparency;
     if b.plotting && b.list.prim_layers.len() < b.list.prims.len() {
@@ -1496,6 +1513,7 @@ fn sub_ctx<'a>(ctx: &Ctx<'a>, e: &Entity, m: Mat3) -> Ctx<'a> {
         block_pstyle: ctx.block_pstyle,
         // The reference's own, set by the caller (`Builder::transparency` while it draws).
         block_transparency: ctx.block_transparency,
+        view: ctx.view.map(|v| v.mul(&Mat4::from_mat3(&m))),
     }
 }
 
@@ -1513,7 +1531,8 @@ fn insert(b: &mut Builder, ctx: &Ctx, e: &Entity, ins: &cadcraft_doc::Insert, rg
                 }
                 let off = Vec2::new(ins.col_spacing * f64::from(c), ins.row_spacing * f64::from(r)).rotate(ins.rotation);
                 let m = Mat3::translate(off).then_before(ins.transform(blk.base.xy()));
-                let sub = Ctx { block_pstyle: b.named, block_transparency: b.transparency, ..sub_ctx(ctx, e, m) };
+                let view = ctx.view.map(|v| v.mul(&project::insert_transform(&m, ins, blk.base)));
+                let sub = Ctx { block_pstyle: b.named, block_transparency: b.transparency, view, ..sub_ctx(ctx, e, m) };
                 for be in blk.entities.iter() {
                     // Constant/visible attribute definitions inside blocks are not drawn; attribs are.
                     if matches!(be.kind, EntityKind::AttDef(_)) {
