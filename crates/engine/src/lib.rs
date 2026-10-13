@@ -86,6 +86,30 @@ fn usable_view(v: &View) -> bool {
     v.center.is_finite() && v.height.is_finite() && v.height > 1e-12
 }
 
+/// How model space is drawn (VSCURRENT): edges only, or 3D faces and meshes filled and lit.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum VisualStyle {
+    #[default]
+    Wireframe2d,
+    Shaded,
+    ShadedWithEdges,
+}
+
+impl VisualStyle {
+    /// The name shown in the view label and the View ▸ Visual Styles menu.
+    pub fn label(self) -> &'static str {
+        match self {
+            VisualStyle::Wireframe2d => "2D Wireframe",
+            VisualStyle::Shaded => "Shaded",
+            VisualStyle::ShadedWithEdges => "Shaded with Edges",
+        }
+    }
+    /// The display list's `shaded` and `shaded_edges` options.
+    pub fn shading(self) -> (bool, bool) {
+        (self != VisualStyle::Wireframe2d, self == VisualStyle::ShadedWithEdges)
+    }
+}
+
 /// Tiled model viewports (VPORTS): the session side of the drawing's `*Active` configuration.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct ModelTiles {
@@ -141,6 +165,7 @@ pub struct DocState {
     /// coordinates ([`DocState::projection`]).
     pub view_dir: Vec3,
     pub view_twist: f64,
+    pub visual_style: VisualStyle,
     pub uid: u64,
     /// The drawing is saved as binary DXF (it was opened from one, or last saved as one).
     pub binary_dxf: bool,
@@ -172,6 +197,7 @@ impl DocState {
             view_history: Vec::new(),
             view_dir: Vec3::Z,
             view_twist: 0.0,
+            visual_style: VisualStyle::default(),
             uid: NEXT_UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             binary_dxf: false,
             block_edit: None,

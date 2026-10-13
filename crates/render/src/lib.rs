@@ -230,6 +230,11 @@ pub struct Options {
     /// A parallel 3D view of model space: WCS → view coordinates ([`Mat4::view`]); the list is
     /// in view coordinates. `None` = plan view. Layouts are always drawn in plan.
     pub projection: Option<Mat4>,
+    /// In a 3D view, fill 3D faces, polyface meshes and solids, lit and drawn back to front under
+    /// everything else (the Shaded visual style), instead of drawing their edges.
+    pub shaded: bool,
+    /// With `shaded`, draw their edges over the faces too (Shaded with Edges).
+    pub shaded_edges: bool,
 }
 
 impl Options {
@@ -254,6 +259,8 @@ impl Default for Options {
             transparency: false,
             cancel: None,
             projection: None,
+            shaded: false,
+            shaded_edges: false,
         }
     }
 }
@@ -319,6 +326,8 @@ struct Builder<'a> {
     shared_budget: Option<&'a std::sync::atomic::AtomicUsize>,
     /// Transparency (percent) of the entity being drawn.
     transparency: u8,
+    /// Faces of a shaded 3D view, drawn back to front before everything else ([`finish`]).
+    faces: Vec<project::ShadedFace>,
 }
 
 /// Upper bound on the block contents drawn per display list (each block reference, MINSERT copy
@@ -513,7 +522,16 @@ fn top_ctx<'a>(d: &'a Drawing, xf: Mat3, top: Handle, frozen: &'a [String], vp_c
 fn build_space(d: &Drawing, space: &Space, opts: &Options, plotting: bool) -> DisplayList {
     let opts = &with_point_view(d, space, opts);
     let styler = style_table(d, space, opts, plotting).map(|t| plotstyle::Styler::new(d, t));
-    let mut b = Builder { list: DisplayList::default(), opts, plotting, styles: styler.as_ref(), named: None, shared_budget: None, transparency: 0 };
+    let mut b = Builder {
+        list: DisplayList::default(),
+        opts,
+        plotting,
+        styles: styler.as_ref(),
+        named: None,
+        shared_budget: None,
+        transparency: 0,
+        faces: Vec::new(),
+    };
     if let Space::Paper(name) = space {
         b.list.sheet = paper::sheet(d, name);
     }
@@ -522,7 +540,7 @@ fn build_space(d: &Drawing, space: &Space, opts: &Options, plotting: bool) -> Di
         #[cfg(not(target_arch = "wasm32"))]
         if !paper && !plotting && b.styles.is_none() && store.len() >= 2 * PARALLEL_CHUNK {
             build_parallel(&mut b, d, store);
-            return b.list;
+            return finish(b);
         }
         let mut viewports = 0usize;
         for e in store.iter() {
@@ -544,7 +562,36 @@ fn build_space(d: &Drawing, space: &Space, opts: &Options, plotting: bool) -> Di
     if let Some(sheet) = b.list.sheet {
         pen::apply(&mut b.list, sheet.unit_mm);
     }
-    b.list
+    finish(b)
+}
+
+/// The built list, with the faces of a shaded 3D view first, farthest first (painter's order):
+/// everything else is drawn over them.
+fn finish(mut b: Builder) -> DisplayList {
+    if b.faces.is_empty() {
+        return b.list;
+    }
+    b.faces.sort_by(|x, y| x.depth.total_cmp(&y.depth));
+    let mut list = DisplayList::default();
+    for f in b.faces {
+        let start = list.tris.len() as u32;
+        for p in &f.tris {
+            list.bounds.add(*p);
+            list.tris.push(*p);
+        }
+        list.prims.push(DPrim {
+            handle: f.handle,
+            color: f.rgb,
+            aci7: false,
+            lw: 0.0,
+            transparency: f.transparency,
+            kind: Kind::Tris,
+            start,
+            len: f.tris.len() as u32,
+        });
+    }
+    append(&mut list, b.list);
+    list
 }
 
 /// Top-level entities per task when a display list is built on all cores.
@@ -562,28 +609,36 @@ fn build_parallel(b: &mut Builder, d: &Drawing, store: &cadcraft_doc::EntityStor
     let ents: Vec<&std::sync::Arc<Entity>> = store.iter().collect();
     let budget = std::sync::atomic::AtomicUsize::new(0);
     let (opts, plotting) = (b.opts, b.plotting);
-    let parts: Vec<DisplayList> = ents
+    let parts: Vec<(DisplayList, Vec<project::ShadedFace>)> = ents
         .par_chunks(PARALLEL_CHUNK)
         .map(|chunk| {
-            let mut part =
-                Builder { list: DisplayList::default(), opts, plotting, styles: None, named: None, shared_budget: Some(&budget), transparency: 0 };
+            let mut part = Builder {
+                list: DisplayList::default(),
+                opts,
+                plotting,
+                styles: None,
+                named: None,
+                shared_budget: Some(&budget),
+                transparency: 0,
+                faces: Vec::new(),
+            };
             for e in chunk {
                 entity(&mut part, &Ctx { view: opts.projection, ..top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]) }, e);
             }
-            part.list
+            (part.list, part.faces)
         })
         .collect();
     // One allocation per array for the joined list.
-    b.list.prims.reserve(parts.iter().map(|p| p.prims.len()).sum());
-    b.list.verts.reserve(parts.iter().map(|p| p.verts.len()).sum());
-    b.list.tris.reserve(parts.iter().map(|p| p.tris.len()).sum());
-    for part in parts {
+    b.list.prims.reserve(parts.iter().map(|p| p.0.prims.len()).sum());
+    b.list.verts.reserve(parts.iter().map(|p| p.0.verts.len()).sum());
+    b.list.tris.reserve(parts.iter().map(|p| p.0.tris.len()).sum());
+    for (part, faces) in parts {
         append(&mut b.list, part);
+        b.faces.extend(faces);
     }
 }
 
 /// Append `src` to `dst`: its primitives index into `dst`'s vertex and triangle arrays.
-#[cfg(not(target_arch = "wasm32"))]
 fn append(dst: &mut DisplayList, src: DisplayList) {
     let (verts, tris, prims) = (dst.verts.len() as u32, dst.tris.len() as u32, dst.prims.len() as u32);
     // Pens are parallel to the primitives, with missing entries meaning "use object".
@@ -692,8 +747,16 @@ pub fn viewport_content(d: &Drawing, space: &Space, handle: Handle, area: Bounds
     }
     let opts = &with_point_view(d, space, opts);
     let styler = style_table(d, space, opts, false).map(|t| plotstyle::Styler::new(d, t));
-    let mut b =
-        Builder { list: DisplayList::default(), opts, plotting: false, styles: styler.as_ref(), named: None, shared_budget: None, transparency: 0 };
+    let mut b = Builder {
+        list: DisplayList::default(),
+        opts,
+        plotting: false,
+        styles: styler.as_ref(),
+        named: None,
+        shared_budget: None,
+        transparency: 0,
+        faces: Vec::new(),
+    };
     contents(&mut b, d, vp, area, &Clip::Rect(area));
     b.list
 }
@@ -740,6 +803,7 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
         named: None,
         shared_budget: None,
         transparency: 0,
+        faces: Vec::new(),
     };
     #[cfg(not(target_arch = "wasm32"))]
     let parallel = !b.plotting && b.styles.is_none() && d.model.len() >= 2 * PARALLEL_CHUNK;
@@ -764,6 +828,7 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
                         named: None,
                         shared_budget: Some(&budget),
                         transparency: 0,
+                        faces: Vec::new(),
                     };
                     let c = ctx();
                     for me in chunk.iter().filter(|me| seen(me)) {
@@ -910,7 +975,16 @@ pub fn build_entities<'a, I: IntoIterator<Item = &'a Entity>>(d: &Drawing, ents:
     } else {
         opts
     };
-    let mut b = Builder { list: DisplayList::default(), opts, plotting: false, styles: None, named: None, shared_budget: None, transparency: 0 };
+    let mut b = Builder {
+        list: DisplayList::default(),
+        opts,
+        plotting: false,
+        styles: None,
+        named: None,
+        shared_budget: None,
+        transparency: 0,
+        faces: Vec::new(),
+    };
     for e in ents {
         entity(&mut b, &Ctx { view: opts.projection, ..top_ctx(d, Mat3::IDENTITY, e.handle, &[], &[]) }, e);
     }
@@ -1025,7 +1099,12 @@ fn entity(b: &mut Builder, ctx: &Ctx, e: &Entity) {
     match &ctx.view {
         // 3D view: 3D geometry already in view coordinates, flat objects through their plane's map.
         Some(v) => match project::in_view(e, v) {
-            Some(in_view) => entity_parts(b, &Ctx { xf: Mat3::IDENTITY, view: None, ..ctx.clone() }, &in_view),
+            Some(in_view) => {
+                let shaded = b.opts.shaded && project::queue_faces(b, ctx, e, &in_view);
+                if !shaded || b.opts.shaded_edges {
+                    entity_parts(b, &Ctx { xf: Mat3::IDENTITY, view: None, ..ctx.clone() }, &in_view);
+                }
+            }
             None => entity_parts(b, &Ctx { xf: v.plane(project::elevation(&e.kind)), ..ctx.clone() }, e),
         },
         None => entity_parts(b, ctx, e),

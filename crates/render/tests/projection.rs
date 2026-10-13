@@ -89,3 +89,39 @@ fn isometric_view_of_a_cube() {
     assert!((x1 - x0 - 2f64.sqrt()).abs() < 1e-6, "width {}", x1 - x0);
     assert!(y1 - y0 > 1.0, "height {}", y1 - y0);
 }
+
+fn face(z: f64, color: u8) -> (Common, EntityKind) {
+    let c = |x: f64, y: f64| Vec3::new(x, y, z);
+    let common = Common { color: cadcraft_color::Color::Index(color), ..Common::default() };
+    (common, EntityKind::Face3d(cadcraft_doc::Face3d { corners: [c(0.0, 0.0), c(4.0, 0.0), c(4.0, 4.0), c(0.0, 4.0)], hidden_edges: 0 }))
+}
+
+#[test]
+fn shaded_faces_are_filled_lit_and_drawn_back_to_front() {
+    use cadcraft_render::Kind;
+    let mut d = Drawing::new_metric();
+    // The upper face first in the drawing: it is nearer the viewer from above, so drawn last.
+    for (z, color) in [(5.0, 1), (0.0, 5)] {
+        let (common, kind) = face(z, color);
+        d.add(&Space::Model, common, kind).unwrap();
+    }
+    d.add(&Space::Model, Common::default(), line(Vec3::new(-1.0, -1.0, 0.0), Vec3::new(5.0, -1.0, 0.0))).unwrap();
+    let iso = Mat4::view(Vec3::new(1.0, -1.0, 1.0), Vec3::ZERO, 0.0);
+    let opts = Options { projection: Some(iso), shaded: true, ..Options::default() };
+    let l = build(&d, &Space::Model, &opts);
+    let fills: Vec<_> = l.prims.iter().filter(|p| p.kind == Kind::Tris).collect();
+    assert_eq!(fills.len(), 2);
+    // Faces first, farthest first: the blue (5) ground face, then the red (1) upper face.
+    assert_eq!(l.prims[0].kind, Kind::Tris);
+    assert!(fills[0].color.2 > fills[0].color.0 && fills[1].color.0 > fills[1].color.2, "{:?}", fills.iter().map(|p| p.color).collect::<Vec<_>>());
+    // Lit: darker than the plain colour, seen at an angle.
+    assert!(fills[1].color.0 < 255);
+    // Shaded: no face edges, only the line. With edges: the faces' outlines too.
+    assert_eq!(l.prims.iter().filter(|p| p.kind == Kind::Polyline).count(), 1);
+    let edges = build(&d, &Space::Model, &Options { shaded_edges: true, ..opts.clone() });
+    assert_eq!(edges.prims.iter().filter(|p| p.kind == Kind::Polyline).count(), 9);
+    assert!(edges.prims.iter().position(|p| p.kind == Kind::Polyline) > edges.prims.iter().rposition(|p| p.kind == Kind::Tris));
+    // Without shading: no fills.
+    let wire = build(&d, &Space::Model, &Options { projection: Some(iso), ..Options::default() });
+    assert!(wire.prims.iter().all(|p| p.kind != Kind::Tris));
+}

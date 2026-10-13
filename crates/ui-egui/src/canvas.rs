@@ -289,8 +289,9 @@ fn ensure_list(app: &mut CadApp, xf: &Xf, views: &[(Bounds2, f64)], ctx: &egui::
         use std::hash::{Hash, Hasher};
         let mut s = std::collections::hash_map::DefaultHasher::new();
         split.hash(&mut s);
-        // A 3D view of model space draws another list.
+        // A 3D view of model space, or another visual style, draws another list.
         xf.projection.map(|m| m.m.map(|r| r.map(f64::to_bits))).hash(&mut s);
+        st.visual_style.hash(&mut s);
         if split.is_none()
             && let Some((h, vp)) = st.active_viewport()
         {
@@ -347,7 +348,10 @@ fn ensure_list(app: &mut CadApp, xf: &Xf, views: &[(Bounds2, f64)], ctx: &egui::
         transparency: app.session.settings.transparency_display,
         skip_viewport: split,
         cancel: None,
-        projection: xf.projection,
+        // Shaded in plan view too: the faces seen from above.
+        projection: xf.projection.or_else(|| st.visual_style.shading().0.then_some(Mat4::IDENTITY)),
+        shaded: st.visual_style.shading().0,
+        shaded_edges: st.visual_style.shading().1,
     };
     if view_only {
         let t = Tokens::get();
@@ -510,6 +514,8 @@ fn ensure_vp_content(app: &mut CadApp, xf_paper: &Xf, ctx: &egui::Context) -> Op
             transparency,
             cancel: None,
             projection: None,
+            shaded: false,
+            shaded_edges: false,
         };
         c.list = cadcraft_render::viewport_content(&st.doc, &st.space, h, area, &opts);
         c.key = Some(key);
@@ -1913,7 +1919,7 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     if app.ui.show_viewcube && sheet.is_none() {
         draw_viewcube(app, ui, rect);
     }
-    viewport_label(&painter, rect, app.session.view_name());
+    viewport_label(&painter, rect, app.session.view_name(), app.session.state().map_or("2D Wireframe", |st| st.visual_style.label()));
     // Typing and Escape reach the command line even when its overlay is hidden.
     crate::cmdline::keyboard(app, ui.ctx());
     // Command line overlay.
@@ -1987,7 +1993,7 @@ fn draw_tiles(app: &CadApp, ui: &egui::Ui, tiles: &[(Rect, cadcraft_engine::Mode
         if let Some(list) = &app.canvas.list {
             draw_list(&p, &xf, list, bg, app.session.settings.lwdisplay);
         }
-        viewport_label(&p, *r, app.session.view_name());
+        viewport_label(&p, *r, app.session.view_name(), app.session.state().map_or("2D Wireframe", |st| st.visual_style.label()));
     }
     let p = ui.painter();
     for (r, tile) in tiles {
@@ -2335,13 +2341,14 @@ fn draw_ucs_icon(p: &egui::Painter, rect: Rect) {
     p.text(o + vec2(0.0, -70.0), egui::Align2::CENTER_BOTTOM, crate::tl!("Y"), f, t.canvas_ink);
 }
 
-/// The view label: the model view's name ([`cadcraft_engine::Session::view_name`]) and the visual style.
-fn viewport_label(p: &egui::Painter, rect: Rect, view: &str) {
+/// The view label: the model view's name ([`cadcraft_engine::Session::view_name`]) and the visual
+/// style.
+fn viewport_label(p: &egui::Painter, rect: Rect, view: &str, style: &str) {
     let t = Tokens::get();
     let at = pos2(rect.left() + 10.0, rect.top() + 8.0);
-    let label = match view {
-        "Top" => crate::tl!("+  |  Top  |  2D Wireframe").to_string(),
-        v => format!("+  |  {}  |  {}", crate::i18n::t(v), crate::tl!("2D Wireframe")),
+    let label = match (view, style) {
+        ("Top", "2D Wireframe") => crate::tl!("+  |  Top  |  2D Wireframe").to_string(),
+        (v, s) => format!("+  |  {}  |  {}", crate::i18n::t(v), crate::i18n::t(s)),
     };
     p.text(at, egui::Align2::LEFT_TOP, label, crate::theme::small(), t.canvas_ink);
 }

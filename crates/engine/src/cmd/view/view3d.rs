@@ -1,13 +1,14 @@
 //! 3D views of model space: VPOINT (a viewing direction, or a preset view of View ▸ 3D Views),
-//! PLAN (back to the plan view of the WCS), both zoomed to the extents as in AutoCAD, and
-//! 3DORBIT (drag to turn the view about the point at the centre of the screen).
+//! PLAN (back to the plan view of the WCS), both zoomed to the extents as in AutoCAD, 3DORBIT
+//! (drag to turn the view about the point at the centre of the screen) and VSCURRENT (the visual
+//! style: 2D wireframe, or 3D faces and meshes shaded).
 
 use cadcraft_doc::Space;
 use cadcraft_geom::{Mat4, Vec2, Vec3};
 use serde_json::{Value, json};
 
 use super::super::*;
-use crate::{Accept, Input, Interactive, Prompt, Result, Session, Step, View};
+use crate::{Accept, Input, Interactive, Prompt, Result, Session, Step, View, VisualStyle};
 
 /// The preset views: name, label (the View ▸ 3D Views menu), viewing direction (towards the viewer).
 pub(crate) const PRESETS: [(&str, &str, [f64; 3]); 10] = [
@@ -42,6 +43,19 @@ pub(super) fn specs() -> Vec<CommandSpec> {
             .params("{azimuth?: degrees about the Z axis, elevation?: degrees up} → {direction}; interactive: drag to orbit about the centre of the view, Enter or Esc ends")
             .noundo()
             .interactive(|_| Ok(Box::new(OrbitM))),
+        CommandSpec::new("vscurrent", "Visual Styles", run_vscurrent)
+            .alias(&["vs"])
+            .params("{style: 2dwireframe|shaded|shadedwithedges} → {style}")
+            .noundo(),
+        CommandSpec::new("vscurrent.2dwireframe", "2D Wireframe", |s, _| run_vscurrent(s, &json!({ "style": "2dwireframe" })))
+            .menu(&["View", "Visual Styles", "2D Wireframe"])
+            .noundo(),
+        CommandSpec::new("vscurrent.shaded", "Shaded", |s, _| run_vscurrent(s, &json!({ "style": "shaded" })))
+            .menu(&["View", "Visual Styles", "Shaded"])
+            .noundo(),
+        CommandSpec::new("vscurrent.shadedwithedges", "Shaded with Edges", |s, _| run_vscurrent(s, &json!({ "style": "shadedwithedges" })))
+            .menu(&["View", "Visual Styles", "Shaded with Edges"])
+            .noundo(),
     ];
     macro_rules! preset {
         ($id:literal, $i:literal) => {
@@ -99,6 +113,19 @@ fn set_direction(s: &mut Session, cmd: &str, dir: Vec3) -> Result<Value> {
     s.zoom_extents()?;
     s.touch();
     Ok(json!({ "direction": [dir.x, dir.y, dir.z] }))
+}
+
+fn run_vscurrent(s: &mut Session, p: &Value) -> Result<Value> {
+    let name = str_param(p, "style").unwrap_or_default().trim().to_ascii_lowercase().replace([' ', '_', '-'], "");
+    let style = match name.as_str() {
+        "2dwireframe" | "2d" => VisualStyle::Wireframe2d,
+        "shaded" | "s" => VisualStyle::Shaded,
+        "shadedwithedges" | "e" => VisualStyle::ShadedWithEdges,
+        _ => return Err(bad("vscurrent", "`style` must be 2dwireframe, shaded or shadedwithedges")),
+    };
+    s.state_mut()?.visual_style = style;
+    s.touch();
+    Ok(json!({ "style": style.label() }))
 }
 
 fn model_only(s: &Session, cmd: &str) -> Result<()> {
