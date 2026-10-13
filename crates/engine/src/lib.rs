@@ -33,7 +33,7 @@ pub mod units;
 use std::sync::Arc;
 
 use cadcraft_doc::{Common, Drawing, Entity, EntityKind, Handle, Space};
-use cadcraft_geom::{Bounds2, Vec2};
+use cadcraft_geom::{Bounds2, Mat4, Vec2, Vec3};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -136,6 +136,11 @@ pub struct DocState {
     pub mspace: Option<Handle>,
     pub views: Vec<(Space, View)>,
     pub view_history: Vec<View>,
+    /// Model space's viewing direction (from the target towards the viewer; +Z = plan view) and
+    /// twist (VPOINT, the ViewCube, 3DORBIT): the view's centre and height are then in view
+    /// coordinates ([`DocState::projection`]).
+    pub view_dir: Vec3,
+    pub view_twist: f64,
     pub uid: u64,
     /// The drawing is saved as binary DXF (it was opened from one, or last saved as one).
     pub binary_dxf: bool,
@@ -165,6 +170,8 @@ impl DocState {
             mspace: None,
             views: Vec::new(),
             view_history: Vec::new(),
+            view_dir: Vec3::Z,
+            view_twist: 0.0,
             uid: NEXT_UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             binary_dxf: false,
             block_edit: None,
@@ -216,6 +223,15 @@ impl DocState {
             cadcraft_doc::EntityKind::Viewport(v) if v.height > 1e-12 && v.view_height > 1e-12 => Some((h, v.clone())),
             _ => None,
         }
+    }
+    /// The 3D view of model space shown on the Model tab (WCS → view coordinates), or `None` in
+    /// plan view and on layouts.
+    pub fn projection(&self) -> Option<Mat4> {
+        if self.space != Space::Model {
+            return None;
+        }
+        let m = Mat4::view(self.view_dir, Vec3::ZERO, self.view_twist);
+        (!m.is_plan()).then_some(m)
     }
     pub fn paper_view(&self) -> View {
         self.views.iter().find(|(s, _)| *s == self.space).map(|(_, v)| *v).unwrap_or_default()
@@ -1693,9 +1709,24 @@ impl Session {
         Ok(Bounds2::new(lo, hi))
     }
 
-    pub fn zoom_extents(&mut self) -> Result<()> {
+    /// The current space's extents as the view shows them: the drawing's extents in plan view,
+    /// the bounds of what is drawn in a 3D view (in view coordinates).
+    pub fn view_extents(&self) -> Result<Bounds2> {
         let space = self.space();
-        let ext = self.doc()?.extents(&space);
+        let d = self.doc()?;
+        let ext = d.extents(&space);
+        match self.state()?.projection() {
+            Some(projection) if !ext.is_empty() => {
+                let tolerance = (ext.width().max(ext.height()) / 1000.0).max(1e-9);
+                let opts = render::Options { projection: Some(projection), tolerance, ..render::Options::default() };
+                Ok(render::build(d, &space, &opts).bounds)
+            }
+            _ => Ok(ext),
+        }
+    }
+
+    pub fn zoom_extents(&mut self) -> Result<()> {
+        let ext = self.view_extents()?;
         let (w, h) = self.viewport_px;
         let ext = if ext.is_empty() { self.zoom_limits()? } else { ext };
         let st = self.state_mut()?;

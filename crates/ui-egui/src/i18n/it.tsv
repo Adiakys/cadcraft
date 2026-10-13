@@ -1237,3 +1237,14 @@ menu	Modify	Edita
 	Search for pattern	Cerca modello
 	Run Script...	Esegui script...
 	Select closed objects (regions, closed polylines, circles).	Selezionare oggetti chiusi (regioni, polilinee chiuse, cerchi).
+	3D Views	Viste 3D
+	Viewpoint	Punto di vista
+	Plan View	Vista in pianta
+	Top	Superiore
+	Bottom	Inferiore
+	Front	Anteriore
+	Back	Posteriore
+	SW Isometric	Isometrica SO
+	SE Isometric	Isometrica SE
+	NE Isometric	Isometrica NE
+	NW Isometric	Isometrica NO
