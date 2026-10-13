@@ -461,7 +461,7 @@ fn attrib_flags(a: &Attrib) -> i64 {
 fn text_tags(w: &mut W, t: &Text, attrib: Option<(&Attrib, Version)>, attdef_prompt: Option<&str>) {
     w.p(10, t.insert);
     w.f(40, t.height);
-    w.s(1, &t.value);
+    w.s(1, t.value.replace('^', "^ "));
     if t.rotation != 0.0 {
         w.f(50, t.rotation.to_degrees());
     }
@@ -499,7 +499,7 @@ fn text_tags(w: &mut W, t: &Text, attrib: Option<(&Attrib, Version)>, attdef_pro
                 w.i(280, 0);
             }
             if let Some(prompt) = attdef_prompt {
-                w.s(3, prompt);
+                w.s(3, prompt.replace('^', "^ "));
             }
             w.s(2, &a.tag);
             w.i(70, attrib_flags(a));
@@ -813,7 +813,7 @@ fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx
             // The actual measurement (read-only in DXF): AutoLISP's entget shows it.
             w.f(42, g.measurement);
             if !dm.text.is_empty() {
-                w.s(1, &dm.text);
+                w.s(1, dm.text.replace('^', "^ "));
             }
             w.s(3, &dm.style);
             if dm.text_rotation != 0.0 {
