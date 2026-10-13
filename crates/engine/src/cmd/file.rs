@@ -158,7 +158,9 @@ fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<
 /// file opens in it; `None` when there is nothing to add (plan view, tiled viewports, images).
 fn with_model_view(s: &Session, d: &cadcraft_doc::Drawing, path: &str) -> Option<cadcraft_doc::Drawing> {
     let st = s.state().ok()?;
-    st.projection()?;
+    if cadcraft_geom::Mat4::view(st.view_dir, cadcraft_geom::Vec3::ZERO, st.view_twist).is_plan() {
+        return None;
+    }
     if !is_drawing_file(path) || d.vports.iter().any(|c| c.is_active() && c.tiles.len() > 1) {
         return None;
     }

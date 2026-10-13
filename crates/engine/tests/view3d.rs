@@ -113,6 +113,13 @@ fn a_drawing_saved_in_a_3d_view_opens_in_it() {
     assert!(!s.state().unwrap().is_dirty(), "the view doesn't change the drawing");
     s.execute("open", &json!({"path": path.to_string_lossy()})).unwrap();
     assert_eq!(s.view_name(), "NE Isometric");
+    // Saved from a layout, model space keeps its 3D view.
+    let name = s.doc().unwrap().layouts[0].name.clone();
+    s.execute("layout.set", &json!({"name": name})).unwrap();
+    s.execute("saveas", &json!({"path": path.to_string_lossy()})).unwrap();
+    s.execute("open", &json!({"path": path.to_string_lossy()})).unwrap();
+    s.execute("layout.set", &json!({"name": "Model"})).unwrap();
+    assert_eq!(s.view_name(), "NE Isometric");
     // Saved again in plan view, it opens in plan view.
     s.execute("plan", &json!({})).unwrap();
     s.execute("saveas", &json!({"path": path.to_string_lossy()})).unwrap();
