@@ -1402,6 +1402,11 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     if resp.dragged_by(egui::PointerButton::Primary) && app.session.realtime_zoom_active() {
         let _ = app.session.realtime_zoom(f64::from(resp.drag_delta().y));
     }
+    // 3DORBIT: dragging turns the view.
+    if resp.dragged_by(egui::PointerButton::Primary) && app.session.orbit_active() {
+        let d = resp.drag_delta();
+        let _ = app.session.orbit(f64::from(d.x), f64::from(d.y));
+    }
     // A click in another tile makes it current (or answers -VPORTS Join's prompts).
     if pressed_primary
         && let Some(hp) = hover_pos
@@ -1482,7 +1487,8 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     // and eframe hands a slow frame's clicks over together, which egui reports as one.
     let point_prompt = app.session.current_prompt().is_some_and(|p| cadcraft_engine::pointmod::accepts(&p))
         && app.session.pending_window.is_none()
-        && !app.session.realtime_zoom_active();
+        && !app.session.realtime_zoom_active()
+        && !app.session.orbit_active();
     let pressed_primary = pressed_primary || (point_prompt && resp.drag_stopped_by(egui::PointerButton::Primary));
     if point_prompt && inside && pressed_primary && !middle_down && app.cmd.options.is_none() && app.cmd.buffer.is_empty() {
         let releases: Vec<egui::Pos2> = ui.input(|i| {
@@ -1907,7 +1913,7 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     if app.ui.show_viewcube && sheet.is_none() {
         draw_viewcube(app, ui, rect);
     }
-    viewport_label(&painter, rect);
+    viewport_label(&painter, rect, app.session.view_name());
     // Typing and Escape reach the command line even when its overlay is hidden.
     crate::cmdline::keyboard(app, ui.ctx());
     // Command line overlay.
@@ -1981,7 +1987,7 @@ fn draw_tiles(app: &CadApp, ui: &egui::Ui, tiles: &[(Rect, cadcraft_engine::Mode
         if let Some(list) = &app.canvas.list {
             draw_list(&p, &xf, list, bg, app.session.settings.lwdisplay);
         }
-        viewport_label(&p, *r);
+        viewport_label(&p, *r, app.session.view_name());
     }
     let p = ui.painter();
     for (r, tile) in tiles {
@@ -2329,10 +2335,15 @@ fn draw_ucs_icon(p: &egui::Painter, rect: Rect) {
     p.text(o + vec2(0.0, -70.0), egui::Align2::CENTER_BOTTOM, crate::tl!("Y"), f, t.canvas_ink);
 }
 
-fn viewport_label(p: &egui::Painter, rect: Rect) {
+/// The view label: the model view's name ([`cadcraft_engine::Session::view_name`]) and the visual style.
+fn viewport_label(p: &egui::Painter, rect: Rect, view: &str) {
     let t = Tokens::get();
     let at = pos2(rect.left() + 10.0, rect.top() + 8.0);
-    p.text(at, egui::Align2::LEFT_TOP, crate::tl!("+  |  Top  |  2D Wireframe"), crate::theme::small(), t.canvas_ink);
+    let label = match view {
+        "Top" => crate::tl!("+  |  Top  |  2D Wireframe").to_string(),
+        v => format!("+  |  {}  |  {}", crate::i18n::t(v), crate::tl!("2D Wireframe")),
+    };
+    p.text(at, egui::Align2::LEFT_TOP, label, crate::theme::small(), t.canvas_ink);
 }
 
 fn draw_viewcube(app: &mut CadApp, ui: &mut egui::Ui, rect: Rect) {

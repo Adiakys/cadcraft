@@ -51,3 +51,49 @@ fn bad_directions_and_layouts_are_refused() {
     assert!(s.state().unwrap().projection().is_none());
     assert!(s.execute("vpoint", &json!({"preset": "top"})).is_err());
 }
+
+#[test]
+fn orbit_turns_the_view_about_the_centre_and_stops_short_of_the_poles() {
+    let mut s = session_with_a_column();
+    s.execute("vpoint", &json!({"preset": "front"})).unwrap();
+    let before = s.state().unwrap().view();
+    // A quarter turn about Z from the front: the view from the right.
+    let r = s.execute("3dorbit", &json!({"azimuth": 90})).unwrap();
+    let d = &r["direction"];
+    assert!((d[0].as_f64().unwrap() - 1.0).abs() < 1e-9 && d[1].as_f64().unwrap().abs() < 1e-9, "{d}");
+    assert_eq!(s.view_name(), "Right");
+    assert_eq!(s.state().unwrap().view().height, before.height, "orbiting keeps the zoom");
+    // Up past the pole: it stops just short of straight down at the model.
+    s.execute("3dorbit", &json!({"elevation": 200})).unwrap();
+    let z = s.state().unwrap().view_dir.z;
+    assert!(z < 1.0 && z > 0.9999, "{z}");
+    assert!(s.state().unwrap().projection().is_some());
+}
+
+#[test]
+fn orbit_follows_drags_until_enter() {
+    let mut s = session_with_a_column();
+    s.viewport_px = (800.0, 600.0);
+    s.cmdline("3dorbit").unwrap();
+    assert!(s.orbit_active());
+    // From the plan view, a drag starts looking from the south and tilts down to the model.
+    s.orbit(0.0, -100.0).unwrap();
+    let d = s.state().unwrap().view_dir;
+    assert!(d.y < 0.0 && d.z > 0.0 && d.z < 1.0, "{d:?}");
+    s.orbit(200.0, 0.0).unwrap();
+    assert_ne!(s.state().unwrap().view_dir, d);
+    s.cmdline("").unwrap();
+    assert!(!s.orbit_active());
+}
+
+#[test]
+fn the_compass_ring_twists_a_plan_view() {
+    let mut s = session_with_a_column();
+    s.rotate_view(std::f64::consts::FRAC_PI_2).unwrap();
+    let st = s.state().unwrap();
+    assert!((st.view_twist - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
+    assert_eq!(st.view_dir, cadcraft_geom::Vec3::Z);
+    assert_eq!(s.view_name(), "Top");
+    // A twisted plan view is drawn turned.
+    assert!(st.projection().is_some());
+}
