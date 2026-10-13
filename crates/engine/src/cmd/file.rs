@@ -130,9 +130,9 @@ fn save_options(cmd: &str, p: &Value) -> Result<SaveAs> {
 
 /// TrueType fonts of Linux and open-source systems that AutoCAD on Windows doesn't install, and
 /// the Windows font a file gets instead: the metric-compatible one for the Liberation families,
-/// Verdana (the same Bitstream Vera design) for DejaVu Sans. Keyed by file stem or family name,
-/// lower case without spaces, hyphens or underscores.
-const PORTABLE_FONTS: [(&str, &str); 22] = [
+/// Verdana (the same Bitstream Vera design) for DejaVu Sans, Arial for Open Sans. Keyed by file
+/// stem or family name, lower case without spaces, hyphens or underscores.
+const PORTABLE_FONTS: [(&str, &str); 39] = [
     ("liberationsans", "arial.ttf"),
     ("liberationsansregular", "arial.ttf"),
     ("liberationsansbold", "arialbd.ttf"),
@@ -148,6 +148,23 @@ const PORTABLE_FONTS: [(&str, &str); 22] = [
     ("liberationmono", "cour.ttf"),
     ("liberationmonoregular", "cour.ttf"),
     ("liberationmonobold", "courbd.ttf"),
+    ("liberationmonoitalic", "couri.ttf"),
+    ("liberationmonobolditalic", "courbi.ttf"),
+    ("opensans", "arial.ttf"),
+    ("opensansregular", "arial.ttf"),
+    ("opensanslight", "arial.ttf"),
+    ("opensansitalic", "ariali.ttf"),
+    ("opensanslightitalic", "ariali.ttf"),
+    ("opensansbold", "arialbd.ttf"),
+    ("opensanssemibold", "arialbd.ttf"),
+    ("opensansextrabold", "arialbd.ttf"),
+    ("opensansbolditalic", "arialbi.ttf"),
+    ("opensanssemibolditalic", "arialbi.ttf"),
+    ("opensansextrabolditalic", "arialbi.ttf"),
+    ("opensanscondensed", "arialn.ttf"),
+    ("opensanscondensedbold", "arialnb.ttf"),
+    ("opensanscondensedlight", "arialn.ttf"),
+    ("opensanscondensedlightitalic", "arialni.ttf"),
     ("dejavusans", "verdana.ttf"),
     ("dejavusansbold", "verdanab.ttf"),
     ("dejavusansoblique", "verdanai.ttf"),

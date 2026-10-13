@@ -27,6 +27,9 @@ fn portable_fonts_by_file_or_family_name() {
     assert_eq!(portable_font("DejaVuSans.ttf"), Some("verdana.ttf"));
     assert_eq!(portable_font("/usr/share/fonts/truetype/LiberationSerif-Bold.ttf"), Some("timesbd.ttf"));
     assert_eq!(portable_font("Liberation Mono"), Some("cour.ttf"));
+    assert_eq!(portable_font("LiberationMono-BoldItalic.ttf"), Some("courbi.ttf"));
+    assert_eq!(portable_font("OpenSans-SemiBold.ttf"), Some("arialbd.ttf"));
+    assert_eq!(portable_font("Open Sans"), Some("arial.ttf"));
     assert_eq!(portable_font("arial.ttf"), None);
     assert_eq!(portable_font("txt"), None);
     assert_eq!(portable_font(""), None);
