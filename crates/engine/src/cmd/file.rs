@@ -508,6 +508,10 @@ pub fn not_saved(d: &Drawing) -> std::collections::BTreeMap<String, usize> {
 /// store section, which is written back with the drawing (`Foreign::data_store`).
 const MODELER_TYPES: [&str; 3] = ["3DSOLID", "REGION", "BODY"];
 
+/// Entity types CADCraft doesn't model that a DWG keeps anyway: the DWG bridge reads their groups
+/// as its own entity and writes it (io's `dwg_keeps_meshes`).
+const DWG_KEEPS: [&str; 1] = ["MESH"];
+
 /// [`not_saved`] for a file saved as `version`. From 2013 on, a 3D solid, region or body the data
 /// store has a record for keeps its geometry and is not counted.
 pub fn not_saved_as(d: &Drawing, version: Version) -> std::collections::BTreeMap<String, usize> {
@@ -517,6 +521,9 @@ pub fn not_saved_as(d: &Drawing, version: Version) -> std::collections::BTreeMap
     for e in stores.flat_map(|s| s.iter()) {
         if let cadcraft_doc::EntityKind::Unknown(u) = &e.kind {
             if MODELER_TYPES.iter().any(|t| u.dxf_type.eq_ignore_ascii_case(t)) && stored.contains(&e.handle) {
+                continue;
+            }
+            if DWG_KEEPS.iter().any(|t| u.dxf_type.eq_ignore_ascii_case(t)) {
                 continue;
             }
             let n = out.entry(u.dxf_type.clone()).or_insert(0);
