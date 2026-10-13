@@ -201,7 +201,15 @@ impl Session {
     /// One step of a 3DORBIT drag of (`dx`, `dy`) pixels: across the whole drawing area turns the
     /// view half a turn about the Z axis, up and down tilts it.
     pub fn orbit(&mut self, dx: f64, dy: f64) -> Result<()> {
-        if !self.orbit_active() || !(dx.is_finite() && dy.is_finite()) {
+        if !self.orbit_active() {
+            return Ok(());
+        }
+        self.drag_view(dx, dy)
+    }
+    /// Orbit model space by a drag of (`dx`, `dy`) pixels outside 3DORBIT, as dragging the
+    /// ViewCube does; a layout stays in plan.
+    pub fn drag_view(&mut self, dx: f64, dy: f64) -> Result<()> {
+        if !(dx.is_finite() && dy.is_finite()) || self.layout_space() != Space::Model {
             return Ok(());
         }
         let k = std::f64::consts::PI / self.viewport_px.0.max(1.0);

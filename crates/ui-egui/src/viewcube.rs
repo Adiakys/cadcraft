@@ -4,8 +4,9 @@
 //! Every overlay registers a widget that senses clicks *and* drags, so egui hands the pointer to
 //! the overlay instead of the canvas underneath (a click on the ViewCube must never also pick or
 //! start a selection window in the drawing). What the overlays do goes through commands and the
-//! session: `plan` (the face), `zoom.extents` (Home), [`cadcraft_engine::Session::rotate_view`]
-//! (dragging the compass ring), `ui.toggle.viewcube`, `ui.toggle.ucsicon`.
+//! session: `plan` (a click on the face), [`cadcraft_engine::Session::drag_view`] (dragging the
+//! face), `zoom.extents` (Home), [`cadcraft_engine::Session::rotate_view`] (dragging the compass
+//! ring), `ui.toggle.viewcube`, `ui.toggle.ucsicon`.
 //!
 //! There is no user coordinate system yet, so the WCS menu lists the only one there is.
 
@@ -66,7 +67,7 @@ pub enum Part {
 impl Part {
     fn tip(self) -> &'static str {
         match self {
-            Part::Face => "The current view; click for the plan view (PLAN)",
+            Part::Face => "The current view; click for the plan view (PLAN), drag to orbit",
             Part::Home => "Home: zoom to the drawing extents",
             Part::Ring => "Compass: drag to turn the view about the Z axis",
         }
@@ -117,6 +118,10 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui, l: &Layout) {
             }
             Some(Part::Ring) | None => {}
         }
+    }
+    if resp.dragged() && pressed_on == Some(Part::Face) {
+        let d = resp.drag_delta();
+        let _ = app.session.drag_view(f64::from(d.x), f64::from(d.y));
     }
     // Dragging the ring turns the view with the pointer, about the cube's centre.
     if resp.dragged()
@@ -300,6 +305,23 @@ mod tests {
         let empty = canvas(&app).center() + vec2(0.0, -300.0);
         click(&mut app, &ctx, empty, egui::PointerButton::Primary);
         assert!(app.session.pending_window.is_some(), "an empty-space click starts a selection window");
+    }
+
+    #[test]
+    fn dragging_the_face_orbits_the_view() {
+        let (mut app, ctx) = app_and_ctx();
+        let l = Layout::new(canvas(&app));
+        let m = egui::Modifiers::default();
+        let end = l.center + vec2(60.0, 40.0);
+        frame(&mut app, &ctx, vec![egui::Event::PointerMoved(l.center)]);
+        frame(&mut app, &ctx, vec![egui::Event::PointerButton { pos: l.center, button: egui::PointerButton::Primary, pressed: true, modifiers: m }]);
+        for k in 1..=4 {
+            frame(&mut app, &ctx, vec![egui::Event::PointerMoved(l.center + (end - l.center) * (k as f32 / 4.0))]);
+        }
+        frame(&mut app, &ctx, vec![egui::Event::PointerButton { pos: end, button: egui::PointerButton::Primary, pressed: false, modifiers: m }]);
+        let d = app.session.state().unwrap().view_dir;
+        assert!(d.z < 1.0 && d.z > 0.0, "looking down at the model from the side: {d:?}");
+        assert!(app.session.pending_window.is_none(), "the drag didn't start a selection window");
     }
 
     #[test]
