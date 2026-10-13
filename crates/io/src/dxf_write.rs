@@ -17,7 +17,7 @@ struct W {
     next: u64,
     /// Upper-case plot style name → its `ACDBPLACEHOLDER` handle (group 390 of layers and objects).
     pstyles: HashMap<String, String>,
-    /// Upper-case layer name → its LAYER table record handle (group 341 of viewports).
+    /// Upper-case layer name → its LAYER table record handle (group 331 of viewports).
     layers: HashMap<String, String>,
     /// Persistent reactors of boundary objects: each source object of an associative hatch →
     /// the hatches (groups `{ACAD_REACTORS 330 …}`), from [`hatch_reactors`].
@@ -1067,11 +1067,11 @@ fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx
             if let Some(h) = clip {
                 w.s(340, h.hex());
             }
-            // AutoCAD's frozen-layer list: one soft pointer per layer, to its LAYER record. Other
-            // programs read only this; CADCraft prefers its own xdata below when present.
+            // AutoCAD's frozen-layer list (group 331): one soft pointer per layer, to its LAYER
+            // record. Other programs read only this; CADCraft prefers its own xdata below when present.
             for name in &v.frozen_layers {
                 if let Some(h) = w.layers.get(&name.to_ascii_uppercase()).cloned() {
-                    w.s(341, h);
+                    w.s(331, h);
                 }
             }
             // One CADCraft xdata group holds both lists: readers stop at the first group of an app.
