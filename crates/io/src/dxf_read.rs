@@ -1139,13 +1139,19 @@ fn parse_entities(recs: &[(String, Vec<Tag>)], d: &mut Drawing, rx: &mut Rx, ski
                     }
                 }
                 let c = common(&t);
-                let k = if flags & (16 | 64) != 0 {
-                    // Polyface (64) and polygon (16) meshes become 3D faces; the first takes the
-                    // polyline's place.
+                let k = if flags & 64 != 0 {
+                    // Face indices outside 16 bits name no vertex: the face is skipped when drawn.
+                    let faces = faces.iter().map(|f| f.map(|ix| i32::try_from(ix).unwrap_or(i32::MAX))).collect();
+                    let mesh = PolyfaceMesh { vertices: pts.iter().map(|p| p.0).collect(), faces };
+                    if mesh.faces3d().is_empty() {
+                        *skipped = skipped.saturating_add(1);
+                        continue;
+                    }
+                    EntityKind::PolyfaceMesh(mesh)
+                } else if flags & 16 != 0 {
+                    // Polygon meshes become 3D faces; the first takes the polyline's place.
                     let verts: Vec<Vec3> = pts.iter().map(|p| p.0).collect();
-                    let mut fs = if flags & 64 != 0 { polyface_faces(&verts, &faces) } else { mesh_faces(&verts, &t, flags) }
-                        .into_iter()
-                        .map(EntityKind::Face3d);
+                    let mut fs = mesh_faces(&verts, &t, flags).into_iter().map(EntityKind::Face3d);
                     let Some(first) = fs.next() else {
                         *skipped = skipped.saturating_add(1);
                         continue;
@@ -1241,36 +1247,6 @@ fn parse_entities(recs: &[(String, Vec<Tag>)], d: &mut Drawing, rx: &mut Rx, ski
         if !seen.insert(e.handle) {
             e.handle = d.new_handle();
             seen.insert(e.handle);
-        }
-    }
-    out
-}
-
-/// Faces of a polyface mesh: each face record names three or four vertices by 1-based index;
-/// a negative index hides the edge that starts at that vertex. Faces with fewer vertices or
-/// an index outside the vertex list are skipped.
-fn polyface_faces(verts: &[Vec3], faces: &[[i64; 4]]) -> Vec<Face3d> {
-    let mut out = Vec::new();
-    for f in faces {
-        let mut corners: Vec<Vec3> = Vec::with_capacity(4);
-        let mut hidden = 0u8;
-        let mut ok = true;
-        for &ix in f.iter().filter(|&&ix| ix != 0) {
-            let at = usize::try_from(ix.unsigned_abs()).ok().and_then(|n| n.checked_sub(1));
-            let Some(p) = at.and_then(|n| verts.get(n)) else {
-                ok = false;
-                break;
-            };
-            if ix < 0 {
-                hidden |= 1 << corners.len();
-            }
-            corners.push(*p);
-        }
-        match (ok, corners.as_slice()) {
-            // A triangle's closing edge is the 3DFACE's fourth (the third is degenerate).
-            (true, [a, b, c]) => out.push(Face3d { corners: [*a, *b, *c, *c], hidden_edges: hidden | if hidden & 4 != 0 { 8 } else { 0 } }),
-            (true, [a, b, c, d]) => out.push(Face3d { corners: [*a, *b, *c, *d], hidden_edges: hidden }),
-            _ => {}
         }
     }
     out

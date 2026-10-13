@@ -617,6 +617,50 @@ fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx
             w.s(100, "AcDbEntity");
             w.s(8, &e.common.layer);
         }
+        // Polyface mesh: the vertices (flags 64 | 128), then one face record (128) per face.
+        EntityKind::PolyfaceMesh(m) => {
+            w.s(0, "POLYLINE");
+            common(w, e, owner, paper, "AcDbPolyFaceMesh");
+            w.i(66, 1);
+            w.p(10, Vec3::ZERO);
+            w.i(70, 64);
+            w.i(71, m.vertices.len() as i64);
+            w.i(72, m.faces.len() as i64);
+            for q in &m.vertices {
+                let vh = w.h();
+                w.s(0, "VERTEX");
+                w.s(5, vh);
+                w.s(330, e.handle.hex());
+                w.s(100, "AcDbEntity");
+                w.s(8, &e.common.layer);
+                w.s(100, "AcDbVertex");
+                w.s(100, "AcDbPolyFaceMeshVertex");
+                w.p(10, *q);
+                w.i(70, 192);
+            }
+            for f in &m.faces {
+                let vh = w.h();
+                w.s(0, "VERTEX");
+                w.s(5, vh);
+                w.s(330, e.handle.hex());
+                w.s(100, "AcDbEntity");
+                w.s(8, &e.common.layer);
+                w.s(100, "AcDbFaceRecord");
+                w.p(10, Vec3::ZERO);
+                w.i(70, 128);
+                for (code, ix) in [71, 72, 73, 74].into_iter().zip(f) {
+                    if *ix != 0 {
+                        w.i(code, i64::from(*ix));
+                    }
+                }
+            }
+            let sh = w.h();
+            w.s(0, "SEQEND");
+            w.s(5, sh);
+            w.s(330, e.handle.hex());
+            w.s(100, "AcDbEntity");
+            w.s(8, &e.common.layer);
+        }
         EntityKind::Spline(s) => {
             w.s(0, "SPLINE");
             common(w, e, owner, paper, "AcDbSpline");

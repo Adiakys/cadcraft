@@ -793,6 +793,44 @@ pub struct Face3d {
     #[serde(default)]
     pub hidden_edges: u8,
 }
+/// POLYLINE polyface mesh (DXF flag 64): its vertices, and faces naming three or four of them
+/// by 1-based index as DXF stores them (0: no fourth vertex; a negative index hides the edge
+/// that starts at that vertex).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PolyfaceMesh {
+    pub vertices: Vec<Vec3>,
+    pub faces: Vec<[i32; 4]>,
+}
+impl PolyfaceMesh {
+    /// The faces as 3D faces (what EXPLODE makes). Faces with fewer than three vertices or an
+    /// index outside the vertex list are skipped.
+    pub fn faces3d(&self) -> Vec<Face3d> {
+        let mut out = Vec::new();
+        for f in &self.faces {
+            let mut corners: Vec<Vec3> = Vec::with_capacity(4);
+            let mut hidden = 0u8;
+            let mut ok = true;
+            for &ix in f.iter().filter(|&&ix| ix != 0) {
+                let at = usize::try_from(ix.unsigned_abs()).ok().and_then(|n| n.checked_sub(1));
+                let Some(p) = at.and_then(|n| self.vertices.get(n)) else {
+                    ok = false;
+                    break;
+                };
+                if ix < 0 {
+                    hidden |= 1 << corners.len();
+                }
+                corners.push(*p);
+            }
+            match (ok, corners.as_slice()) {
+                // A triangle's closing edge is the 3DFACE's fourth (the third is degenerate).
+                (true, [a, b, c]) => out.push(Face3d { corners: [*a, *b, *c, *c], hidden_edges: hidden | if hidden & 4 != 0 { 8 } else { 0 } }),
+                (true, [a, b, c, d]) => out.push(Face3d { corners: [*a, *b, *c, *d], hidden_edges: hidden }),
+                _ => {}
+            }
+        }
+        out
+    }
+}
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RayLine {
     pub base: Vec3,
@@ -999,6 +1037,7 @@ pub enum EntityKind {
     Solid(Solid),
     Trace(Solid),
     Face3d(Face3d),
+    PolyfaceMesh(PolyfaceMesh),
     Region(Region),
     Viewport(Viewport),
     Image(Image),
@@ -1053,6 +1092,7 @@ impl EntityKind {
             EntityKind::Solid(_) => "2D Solid",
             EntityKind::Trace(_) => "Trace",
             EntityKind::Face3d(_) => "3D Face",
+            EntityKind::PolyfaceMesh(_) => "Polyface Mesh",
             EntityKind::Region(_) => "Region",
             EntityKind::Viewport(_) => "Viewport",
             EntityKind::Image(_) => "Raster Image",
@@ -1088,6 +1128,7 @@ impl EntityKind {
             EntityKind::Solid(_) => "SOLID",
             EntityKind::Trace(_) => "TRACE",
             EntityKind::Face3d(_) => "3DFACE",
+            EntityKind::PolyfaceMesh(_) => "POLYLINE",
             EntityKind::Region(_) => "REGION",
             EntityKind::Viewport(_) => "VIEWPORT",
             EntityKind::Image(_) => "IMAGE",
@@ -1136,6 +1177,17 @@ impl EntityKind {
                 let pts = [c[0].xy(), c[1].xy(), c[2].xy(), c[3].xy(), c[0].xy()];
                 pts.windows(2).filter_map(|w| Some(Prim::Seg(Segment::Line(GLine::new(*w.first()?, *w.get(1)?))))).collect()
             }
+            // Visible edges only: a mesh hides the edges inside its surface.
+            EntityKind::PolyfaceMesh(m) => m
+                .faces3d()
+                .iter()
+                .flat_map(|f| {
+                    let c = f.corners;
+                    (0..4).filter(move |i| f.hidden_edges & (1 << i) == 0).map(move |i| (c[i].xy(), c[(i + 1) % 4].xy()))
+                })
+                .filter(|(a, b)| a != b)
+                .map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a, b))))
+                .collect(),
             EntityKind::Region(r) => r.segments().into_iter().map(Prim::Seg).collect(),
             EntityKind::Hatch(h) => {
                 h.loops.iter().flat_map(|l| Polyline { vertices: l.vertices.clone(), closed: true }.segments()).map(Prim::Seg).collect()
@@ -1341,6 +1393,7 @@ impl EntityKind {
             }
             EntityKind::Solid(so) | EntityKind::Trace(so) => so.corners.iter_mut().for_each(t3),
             EntityKind::Face3d(f) => f.corners.iter_mut().for_each(t3),
+            EntityKind::PolyfaceMesh(pm) => pm.vertices.iter_mut().for_each(t3),
             EntityKind::Region(r) => {
                 for v in r.loops.iter_mut().flat_map(|l| l.vertices.iter_mut()) {
                     v.p = m.apply(v.p);
@@ -1440,6 +1493,7 @@ impl EntityKind {
             }
             EntityKind::Solid(s) | EntityKind::Trace(s) => s.corners.iter().map(|c| c.xy()).collect(),
             EntityKind::Face3d(f) => f.corners.iter().map(|c| c.xy()).collect(),
+            EntityKind::PolyfaceMesh(m) => m.vertices.iter().map(|v| v.xy()).collect(),
             EntityKind::Region(r) => vec![r.bounds().center()],
             EntityKind::Viewport(v) => {
                 let c = v.center.xy();
