@@ -481,21 +481,24 @@ fn entity(kind: &str, tags: &[Tag]) -> Option<(Common, EntityKind)> {
             k
         }
         "ACAD_TABLE" => EntityKind::Table(acad_table(tags)),
-        "VIEWPORT" => EntityKind::Viewport(Viewport {
-            center: t.p(10),
-            width: t.fd(40, 1.0),
-            height: t.fd(41, 1.0),
-            view_center: Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0)),
-            view_height: t.fd(45, 1.0),
-            id: t.i(69).unwrap_or(0) as u32,
-            locked: t.i(90).unwrap_or(0) & 16384 != 0,
-            frozen_layers: crate::dxf_ext::read_frozen(tags),
-            layer_colors: crate::dxf_ext::read_layer_colors(tags),
-            // Status flags: 65536 = non-rectangular clipping (by the 340 entity), 131072 = off.
-            clip: t.s(340).and_then(|h| Handle::parse_hex(&h)).filter(|h| h.0 != 0 && t.i(90).unwrap_or(0) & 65536 != 0),
-            on: t.i(90).unwrap_or(0) & 131072 == 0,
-            view3d: view_dir(&t),
-        }),
+        "VIEWPORT" => {
+            let (view_center, view3d) = view(&t);
+            EntityKind::Viewport(Viewport {
+                center: t.p(10),
+                width: t.fd(40, 1.0),
+                height: t.fd(41, 1.0),
+                view_center,
+                view_height: t.fd(45, 1.0),
+                id: t.i(69).unwrap_or(0) as u32,
+                locked: t.i(90).unwrap_or(0) & 16384 != 0,
+                frozen_layers: crate::dxf_ext::read_frozen(tags),
+                layer_colors: crate::dxf_ext::read_layer_colors(tags),
+                // Status flags: 65536 = non-rectangular clipping (by the 340 entity), 131072 = off.
+                clip: t.s(340).and_then(|h| Handle::parse_hex(&h)).filter(|h| h.0 != 0 && t.i(90).unwrap_or(0) & 65536 != 0),
+                on: t.i(90).unwrap_or(0) & 131072 == 0,
+                view3d,
+            })
+        }
         "WIPEOUT" => {
             let o = t.p(10);
             let u = t.p(11);
@@ -1333,13 +1336,21 @@ fn annotative(tags: &[Tag]) -> bool {
     list.iter().filter(|t| t.code == 1070).nth(1).is_some_and(|t| t.i64() != 0)
 }
 
-/// The 3D view of a VIEWPORT or VPORT record (groups 16/26/36 direction, 17/27/37 target, 51
-/// twist in degrees), when it isn't the plan view of the WCS.
-fn view_dir(t: &T) -> Option<ViewDir> {
+/// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target, 51 twist in degrees)
+/// of a VIEWPORT or VPORT record. The centre is relative to the target: a plan view gets it added
+/// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
+fn view(t: &T) -> (Vec2, Option<ViewDir>) {
+    let center = Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0));
     let dir = if t.f(16).is_some() { t.p(16) } else { Vec3::Z };
     let v = ViewDir { dir, target: t.p(17), twist: t.fd(51, 0.0).to_radians() };
-    let usable = dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite() && v.twist.is_finite();
-    (usable && v.is_3d()).then_some(v)
+    if !(dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite() && v.twist.is_finite()) {
+        return (center, None);
+    }
+    if v.matrix().is_plan() {
+        let sum = center + v.target.xy();
+        return (if sum.is_finite() { sum } else { center }, None);
+    }
+    (center, Some(v))
 }
 
 /// A text style's font: CADCraft's own font name from `CADCRAFT` xdata (`1000 FONT`, name)
@@ -1571,7 +1582,8 @@ const MAX_VPORT_TILES: usize = 64;
 /// are fractions of the drawing area; unusable tiles are skipped.
 fn vport_record(d: &mut Drawing, t: &T) {
     let name = t.s(2).map(|n| n.trim().to_string()).unwrap_or_default();
-    let (min, max, center) = (t.p(10).xy(), t.p(11).xy(), t.p(12).xy());
+    let (min, max) = (t.p(10).xy(), t.p(11).xy());
+    let (center, view3d) = view(t);
     let height = t.fd(40, 0.0);
     let unit = |v: f64| v.is_finite() && (-1e-9..=1.0 + 1e-9).contains(&v);
     let ok = [min.x, min.y, max.x, max.y].into_iter().all(unit)
@@ -1585,7 +1597,7 @@ fn vport_record(d: &mut Drawing, t: &T) {
     }
     let aspect = t.f(41).filter(|a| a.is_finite() && *a > 0.0).unwrap_or(0.0);
     let clamp = |p: Vec2| Vec2::new(p.x.clamp(0.0, 1.0), p.y.clamp(0.0, 1.0));
-    let tile = VportTile { min: clamp(min), max: clamp(max), center, height, aspect, view3d: view_dir(t) };
+    let tile = VportTile { min: clamp(min), max: clamp(max), center, height, aspect, view3d };
     let name = if name.eq_ignore_ascii_case(VportConfig::ACTIVE) { VportConfig::ACTIVE.to_string() } else { name };
     let room = d.vports.len() < MAX_OBJECTS;
     match d.vports.iter_mut().find(|c| c.name.eq_ignore_ascii_case(&name)) {

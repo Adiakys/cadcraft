@@ -52,3 +52,23 @@ fn view_directions_round_trip_through_dwg() {
     let back = cadcraft_io::read(&dwg, "x.dwg").unwrap();
     assert!(near(viewport_view(&back), view()));
 }
+
+#[test]
+fn a_plan_viewport_centred_on_its_target_reads_as_a_model_centre() {
+    let mut d = Drawing::new_metric();
+    let paper = Space::Paper(d.layouts[0].name.clone());
+    // As DWG files often store it: the view in the target, the centre relative to it.
+    let in_target = ViewDir { dir: Vec3::Z, target: Vec3::new(10.0, 20.0, 0.0), twist: 0.0 };
+    let vp = Viewport { width: 150.0, height: 100.0, view_center: Vec2::new(1.0, 2.0), id: 2, view3d: Some(in_target), ..Viewport::default() };
+    d.add(&paper, Common::default(), EntityKind::Viewport(vp)).unwrap();
+    let back = read_dxf(write_dxf(&d).as_bytes()).unwrap();
+    let v = back.layouts[0]
+        .entities
+        .iter()
+        .find_map(|e| match &e.kind {
+            EntityKind::Viewport(v) if v.id == 2 => Some(v.clone()),
+            _ => None,
+        })
+        .unwrap();
+    assert_eq!((v.view_center, v.view3d), (Vec2::new(11.0, 22.0), None));
+}
