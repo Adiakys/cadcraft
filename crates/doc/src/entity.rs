@@ -793,6 +793,14 @@ pub struct Face3d {
     #[serde(default)]
     pub hidden_edges: u8,
 }
+impl Face3d {
+    /// The edges drawn: side i (corner i to the next) unless bit i of `hidden_edges` hides it,
+    /// without the zero-length side of a triangle.
+    pub fn visible_edges(&self) -> Vec<(Vec3, Vec3)> {
+        let c = self.corners;
+        (0..4).filter(|i| self.hidden_edges & (1 << i) == 0).map(|i| (c[i], c[(i + 1) % 4])).filter(|(a, b)| a != b).collect()
+    }
+}
 /// POLYLINE polyface mesh (DXF flag 64): its vertices, and faces naming three or four of them
 /// by 1-based index as DXF stores them (0: no fourth vertex; a negative index hides the edge
 /// that starts at that vertex).
@@ -1172,22 +1180,11 @@ impl EntityKind {
                 let c = &s.corners;
                 vec![Prim::Fill(vec![c[0].xy(), c[1].xy(), c[3].xy(), c[2].xy()])]
             }
-            EntityKind::Face3d(f) => {
-                let c = &f.corners;
-                let pts = [c[0].xy(), c[1].xy(), c[2].xy(), c[3].xy(), c[0].xy()];
-                pts.windows(2).filter_map(|w| Some(Prim::Seg(Segment::Line(GLine::new(*w.first()?, *w.get(1)?))))).collect()
+            EntityKind::Face3d(f) => f.visible_edges().into_iter().map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a.xy(), b.xy())))).collect(),
+            // A mesh hides the edges inside its surface.
+            EntityKind::PolyfaceMesh(m) => {
+                m.faces3d().iter().flat_map(Face3d::visible_edges).map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a.xy(), b.xy())))).collect()
             }
-            // Visible edges only: a mesh hides the edges inside its surface.
-            EntityKind::PolyfaceMesh(m) => m
-                .faces3d()
-                .iter()
-                .flat_map(|f| {
-                    let c = f.corners;
-                    (0..4).filter(move |i| f.hidden_edges & (1 << i) == 0).map(move |i| (c[i].xy(), c[(i + 1) % 4].xy()))
-                })
-                .filter(|(a, b)| a != b)
-                .map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a, b))))
-                .collect(),
             EntityKind::Region(r) => r.segments().into_iter().map(Prim::Seg).collect(),
             EntityKind::Hatch(h) => {
                 h.loops.iter().flat_map(|l| Polyline { vertices: l.vertices.clone(), closed: true }.segments()).map(Prim::Seg).collect()
