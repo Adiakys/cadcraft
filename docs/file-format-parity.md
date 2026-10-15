@@ -80,7 +80,7 @@ early (#175), but the throughput problem remains. **DWG ≈ 30% read, ≈ 15% wr
 | HATCH gradient | yes | yes (#162, fixes #80) | |
 | SOLID, TRACE, 3DFACE | yes | yes | |
 | ACAD_TABLE | yes | yes (entity + block) | |
-| VIEWPORT | yes | yes; frozen-layer lists kept (#150), also as AutoCAD's group 331 layer handles, which other programs and the DWG converter read | VP layer colour overrides lost (#99, PR #197) |
+| VIEWPORT | yes | yes; frozen-layer lists kept (#150), also as AutoCAD's group 331 layer handles, which other programs and the DWG converter read; read from 331 or, in DXF 2000 files, 341 | VP layer colour overrides lost (#99, PR #197) |
 | IMAGE | yes, with IMAGEDEF | yes, with IMAGEDEF and IMAGEDEF_REACTOR | no attach command or display of the picture yet (FF10) |
 | WIPEOUT | yes | yes (#147, fixes #79) | |
 | MLINE (+ MLINESTYLE), HELIX, TOLERANCE | yes (#510, #420) | yes | |
@@ -135,6 +135,7 @@ our output in AutoCAD black-box.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-15 | minor | VIEWPORT frozen layers also read from group 341, as DXF 2000 files hold them |
 | 2026-10-13 | minor | VIEWPORT frozen layers written and read as group 331 (DXF Reference), not 341: AutoCAD and the DWG converter now see them, so a DWG keeps them without CADCraft xdata |
 | 2026-10-13 | minor | Saves name text styles with Linux TrueType fonts AutoCAD on Windows doesn't install; SAVEAS and document.bytes `portableFonts` write Windows fonts for them in the file, the drawing keeps its own |
 | 2026-10-13 | minor | Carets in TEXT, ATTDEF, ATTRIB and DIMENSION strings written as `^ ` and decoded on read, as MTEXT already was: AutoCAD showed `10^2` with a control character |

@@ -731,6 +731,20 @@ fn viewport_frozen_layers_read_from_331_without_xdata() {
 }
 
 #[test]
+fn viewport_frozen_layers_read_from_341_as_dxf_2000_writes_them() {
+    let (_, p) = frozen_vp_dxf();
+    let r = vp_record(&p, "2");
+    // No xdata, the handles in group 341, and a layer listed in both groups is read once.
+    let x = p[r.clone()].iter().position(|(c, _)| c == "1001").unwrap() + r.start;
+    let mut q: Vec<(String, String)> = p[..r.start].to_vec();
+    q.extend(p[r.start..x].iter().map(|(c, v)| (if c == "331" { "341".into() } else { c.clone() }, v.clone())));
+    q.push(("331".into(), layer_handle(&p, "Walls")));
+    q.extend(p[r.end..].iter().cloned());
+    let back = read_dxf(join(&q).as_bytes()).unwrap();
+    assert_eq!(viewport_frozen(&back, 2), vec!["Walls".to_string(), "A B".to_string()]);
+}
+
+#[test]
 fn viewport_frozen_xdata_wins_over_331() {
     let (_, p) = frozen_vp_dxf();
     let r = vp_record(&p, "2");
