@@ -87,15 +87,14 @@ fn orbit_follows_drags_until_enter() {
 }
 
 #[test]
-fn the_compass_ring_twists_a_plan_view() {
+fn the_compass_ring_turns_a_3d_view_and_leaves_the_plan_view() {
     let mut s = session_with_a_column();
+    let plan = s.state().unwrap().view();
     s.rotate_view(std::f64::consts::FRAC_PI_2).unwrap();
-    let st = s.state().unwrap();
-    assert!((st.view_twist - std::f64::consts::FRAC_PI_2).abs() < 1e-12);
-    assert_eq!(st.view_dir, cadcraft_geom::Vec3::Z);
-    assert_eq!(s.view_name(), "Top");
-    // A twisted plan view is drawn turned.
-    assert!(st.projection().is_some());
+    assert_eq!((s.view_name(), s.state().unwrap().view()), ("Top", plan));
+    s.execute("vpoint", &json!({"preset": "front"})).unwrap();
+    s.rotate_view(std::f64::consts::FRAC_PI_2).unwrap();
+    assert_eq!(s.view_name(), "Right");
 }
 
 #[test]

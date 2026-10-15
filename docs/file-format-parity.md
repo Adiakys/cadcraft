@@ -80,7 +80,7 @@ early (#175), but the throughput problem remains. **DWG ≈ 30% read, ≈ 15% wr
 | HATCH gradient | yes | yes (#162, fixes #80) | |
 | SOLID, TRACE, 3DFACE | yes | yes | |
 | ACAD_TABLE | yes | yes (entity + block) | |
-| VIEWPORT | yes | yes; 3D view direction, target and twist (16, 17, 51) drawn and kept, a plan view's target added to its centre; frozen-layer lists kept (#150), also as standard group 341 layer handles that other programs read | DWG: the DXF→DWG converter does not yet write group 341 (frozen layers survive a CADCraft round trip via xdata); VP layer colour overrides lost (#99, PR #197) |
+| VIEWPORT | yes | yes; 3D view direction and target (16, 17) drawn and kept, a plan view's target added to its centre; frozen-layer lists kept (#150), also as standard group 341 layer handles that other programs read | DWG: the DXF→DWG converter does not yet write group 341 (frozen layers survive a CADCraft round trip via xdata); VP layer colour overrides lost (#99, PR #197) |
 | IMAGE | yes, with IMAGEDEF | yes, with IMAGEDEF and IMAGEDEF_REACTOR | no attach command or display of the picture yet (FF10) |
 | WIPEOUT | yes | yes (#147, fixes #79) | |
 | MLINE (+ MLINESTYLE), HELIX, TOLERANCE | yes (#510, #420) | yes | |
@@ -88,7 +88,7 @@ early (#175), but the throughput problem remains. **DWG ≈ 30% read, ≈ 15% wr
 | 3DSOLID, BODY, SURFACE, MESH, SHAPE, UNDERLAY, OLE2FRAME, LIGHT, CAMERA, SECTION, POINTCLOUD, proxy entities | kept as Unknown (raw tags) | written back as read, with their CLASS records (#528); **dropped by DWG save** (acadrust), except MESH, which the DWG keeps with every vertex and face | only their layer follows edits |
 | Header variables | all read | 36 written | AutoCAD writes about 280 |
 | Tables: LAYER (+ transparency, description), LTYPE, STYLE, DIMSTYLE, BLOCK_RECORD | yes | yes | |
-| Tables: VPORT, VIEW, UCS, APPID | yes | yes: saved viewport configurations (#504), the model view's 3D direction and twist in `*Active` (the drawing opens in it), named views, UCSs | UCS elevation lost |
+| Tables: VPORT, VIEW, UCS, APPID | yes | yes: saved viewport configurations (#504), the model view's 3D direction in `*Active` (the drawing opens in it), named views, UCSs | UCS elevation lost |
 | Objects: LAYOUT, DICTIONARY, XRECORD, TABLESTYLE, DIMASSOC | yes | yes | |
 | Objects: GROUP, MLINESTYLE, MLEADERSTYLE, IMAGEDEF, SCALE | yes | yes (groups #417, scale list #468) | |
 | Objects: VISUALSTYLE, PLOTSETTINGS, materials, field objects and other unmodelled objects | kept raw (#528) | written back as read | not editable |
@@ -136,7 +136,7 @@ our output in AutoCAD black-box.
 | Date | Change | Summary |
 |---|---|---|
 | 2026-10-13 | minor | A plan VIEWPORT or VPORT whose view is kept in its target (centre relative to it, as DWG files often store it) opens on that view instead of the origin |
-| 2026-10-13 | minor | VIEWPORT and the `*Active` VPORT keep their 3D view direction, target and twist (groups 16, 17, 51): layouts draw 3D viewports, a drawing saved in a 3D view opens in it |
+| 2026-10-13 | minor | VIEWPORT and the `*Active` VPORT keep their 3D view direction and target (groups 16, 17): layouts draw 3D viewports, a drawing saved in a 3D view opens in it |
 | 2026-10-13 | minor | Polyface meshes read, drawn (visible edges), exploded (3D faces) and written as one POLYLINE polyface mesh instead of loose 3D faces; DWG keeps them |
 | 2026-10-13 | minor | DWG save keeps MESH entities (the bridge reads their groups as meshes and writes them; test `dwg_keeps_meshes`); the save no longer reports them as not saved |
 | 2026-10-12 | minor | PDF output: object transparency plotted as PDF alpha (`/ExtGState` `/ca` `/CA`) when the page setup's or the plot's "Plot transparency" is on; PNG plots blend it, SVG uses `opacity`; plots without it are unchanged byte for byte |

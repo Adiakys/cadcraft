@@ -1102,15 +1102,12 @@ fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx
             w.i(68, if v.on { i64::from(v.id.clamp(1, 32767)) } else { 0 });
             w.i(69, i64::from(v.id));
             w.p2(12, v.view_center);
-            // A 3D view: direction, target (the view centre is relative to it) and twist.
+            // A 3D view: direction and target (the view centre is relative to it).
             if let Some(v3) = &v.view3d {
                 w.p(16, v3.dir);
                 w.p(17, v3.target);
             }
             w.f(45, v.view_height);
-            if let Some(v3) = &v.view3d {
-                w.f(51, v3.twist.to_degrees());
-            }
             // Status flags: 16384 = display locked, 32768 = always set, 65536 = clipped by the
             // 340 entity, 131072 = off.
             let clip = v.clip.filter(|h| *h != e.handle && d.entity(*h).is_some());
@@ -1580,9 +1577,6 @@ fn vport_table(w: &mut W, d: &Drawing, ext: Bounds2) {
         w.f(41, if t.aspect.is_finite() && t.aspect > 0.0 { t.aspect } else { 1.0 });
         w.f(42, 50.0);
         w.f(50, d.header.f64("SNAPANG", 0.0));
-        if let Some(v) = t.view3d {
-            w.f(51, v.twist.to_degrees());
-        }
     }
     w.s(0, "ENDTAB");
 }

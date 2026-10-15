@@ -158,14 +158,14 @@ fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<
 /// file opens in it; `None` when there is nothing to add (plan view, tiled viewports, images).
 fn with_model_view(s: &Session, d: &cadcraft_doc::Drawing, path: &str) -> Option<cadcraft_doc::Drawing> {
     let st = s.state().ok()?;
-    if cadcraft_geom::Mat4::view(st.view_dir, cadcraft_geom::Vec3::ZERO, st.view_twist).is_plan() {
+    if cadcraft_geom::Mat4::view(st.view_dir, cadcraft_geom::Vec3::ZERO, 0.0).is_plan() {
         return None;
     }
     if !is_drawing_file(path) || d.vports.iter().any(|c| c.is_active() && c.tiles.len() > 1) {
         return None;
     }
     let mut copy = d.clone();
-    let view3d = Some(cadcraft_doc::ViewDir { dir: st.view_dir, target: cadcraft_geom::Vec3::ZERO, twist: st.view_twist });
+    let view3d = Some(cadcraft_doc::ViewDir { dir: st.view_dir, target: cadcraft_geom::Vec3::ZERO });
     let tile = cadcraft_doc::VportTile { max: cadcraft_geom::Vec2::new(1.0, 1.0), view3d, ..Default::default() };
     match copy.vports.iter_mut().find(|c| c.is_active()) {
         Some(c) => c.tiles = vec![cadcraft_doc::VportTile { view3d, ..c.tiles.first().copied().unwrap_or(tile) }],

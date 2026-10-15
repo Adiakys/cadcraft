@@ -99,7 +99,7 @@ fn run_vpoint(s: &mut Session, p: &Value) -> Result<Value> {
     set_direction(s, "vpoint", dir)
 }
 
-/// Look at model space from `dir`, without twist, and zoom to the extents.
+/// Look at model space from `dir` and zoom to the extents.
 fn set_direction(s: &mut Session, cmd: &str, dir: Vec3) -> Result<Value> {
     let len = dir.len();
     if !(len.is_finite() && len > 1e-12) {
@@ -109,7 +109,6 @@ fn set_direction(s: &mut Session, cmd: &str, dir: Vec3) -> Result<Value> {
     let dir = dir * (1.0 / len);
     let st = s.state_mut()?;
     st.view_dir = dir;
-    st.view_twist = 0.0;
     s.zoom_extents()?;
     s.touch();
     Ok(json!({ "direction": [dir.x, dir.y, dir.z] }))
@@ -154,7 +153,7 @@ fn turn(s: &mut Session, azimuth: f64, elevation: f64) -> Result<()> {
     let limit = 89.9f64.to_radians();
     let el = (d.z.clamp(-1.0, 1.0).asin() + elevation).clamp(-limit, limit);
     let dir = Vec3::new(el.cos() * az.cos(), el.cos() * az.sin(), el.sin());
-    let (old, new) = (Mat4::view(d, Vec3::ZERO, st.view_twist), Mat4::view(dir, Vec3::ZERO, 0.0));
+    let (old, new) = (Mat4::view(d, Vec3::ZERO, 0.0), Mat4::view(dir, Vec3::ZERO, 0.0));
     let v = st.view();
     // The centre of the view on the plane through the origin facing the viewer: the view is
     // orthonormal, so its transpose takes it back to the WCS.
@@ -166,7 +165,6 @@ fn turn(s: &mut Session, azimuth: f64, elevation: f64) -> Result<()> {
     );
     let c = new.apply(pivot);
     st.view_dir = dir;
-    st.view_twist = 0.0;
     st.set_view_quiet(View { center: Vec2::new(c.x, c.y), height: v.height });
     s.touch();
     Ok(())
@@ -215,17 +213,14 @@ impl Session {
         let k = std::f64::consts::PI / self.viewport_px.0.max(1.0);
         turn(self, -dx * k, dy * k)
     }
-    /// Turn the view by `angle` (radians, counterclockwise) about the Z axis, as the ViewCube's
-    /// compass ring does: the twist of a plan view, the azimuth of a 3D view.
+    /// Turn a 3D view by `angle` (radians, counterclockwise) about the Z axis, as the ViewCube's
+    /// compass ring does. A view straight down or up the Z axis has no azimuth to turn.
     pub fn rotate_view(&mut self, angle: f64) -> Result<()> {
         if !angle.is_finite() || self.layout_space() != Space::Model {
             return Ok(());
         }
         let st = self.state()?;
         if st.projection().is_none() || st.view_dir.z.abs() > 1.0 - 1e-12 {
-            let st = self.state_mut()?;
-            st.view_twist = (st.view_twist + angle) % std::f64::consts::TAU;
-            self.touch();
             return Ok(());
         }
         turn(self, angle, 0.0)

@@ -160,11 +160,10 @@ pub struct DocState {
     pub mspace: Option<Handle>,
     pub views: Vec<(Space, View)>,
     pub view_history: Vec<View>,
-    /// Model space's viewing direction (from the target towards the viewer; +Z = plan view) and
-    /// twist (VPOINT, the ViewCube, 3DORBIT): the view's centre and height are then in view
-    /// coordinates ([`DocState::projection`]).
+    /// Model space's viewing direction from the target towards the viewer (VPOINT, the ViewCube,
+    /// 3DORBIT; +Z = plan view): the view's centre and height are then in view coordinates
+    /// ([`DocState::projection`]).
     pub view_dir: Vec3,
-    pub view_twist: f64,
     pub visual_style: VisualStyle,
     pub uid: u64,
     /// The drawing is saved as binary DXF (it was opened from one, or last saved as one).
@@ -196,7 +195,6 @@ impl DocState {
             views: Vec::new(),
             view_history: Vec::new(),
             view_dir: Vec3::Z,
-            view_twist: 0.0,
             visual_style: VisualStyle::default(),
             uid: NEXT_UID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             binary_dxf: false,
@@ -256,7 +254,7 @@ impl DocState {
         if self.space != Space::Model {
             return None;
         }
-        let m = Mat4::view(self.view_dir, Vec3::ZERO, self.view_twist);
+        let m = Mat4::view(self.view_dir, Vec3::ZERO, 0.0);
         (!m.is_plan()).then_some(m)
     }
     pub fn paper_view(&self) -> View {
@@ -788,7 +786,6 @@ impl Session {
         }
         if let Some(v) = saved {
             st.view_dir = v.dir * (1.0 / v.dir.len());
-            st.view_twist = v.twist;
         }
         self.end_running();
         self.docs.push(st);

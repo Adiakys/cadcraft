@@ -140,7 +140,7 @@ fn a_layout_viewport_shows_model_space_from_its_view_direction() {
         view_center: cadcraft_geom::Vec2::new(0.0, 5.0),
         view_height: 40.0,
         id: 2,
-        view3d: Some(cadcraft_doc::ViewDir { dir: Vec3::new(0.0, -1.0, 0.0), target: Vec3::ZERO, twist: 0.0 }),
+        view3d: Some(cadcraft_doc::ViewDir { dir: Vec3::new(0.0, -1.0, 0.0), target: Vec3::ZERO }),
         ..cadcraft_doc::Viewport::default()
     };
     d.add(&paper, Common::default(), EntityKind::Viewport(vp)).unwrap();

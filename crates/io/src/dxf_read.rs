@@ -1336,14 +1336,14 @@ fn annotative(tags: &[Tag]) -> bool {
     list.iter().filter(|t| t.code == 1070).nth(1).is_some_and(|t| t.i64() != 0)
 }
 
-/// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target, 51 twist in degrees)
-/// of a VIEWPORT or VPORT record. The centre is relative to the target: a plan view gets it added
+/// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target) of a VIEWPORT or
+/// VPORT record. The centre is relative to the target: a plan view gets it added
 /// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
 fn view(t: &T) -> (Vec2, Option<ViewDir>) {
     let center = Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0));
     let dir = if t.f(16).is_some() { t.p(16) } else { Vec3::Z };
-    let v = ViewDir { dir, target: t.p(17), twist: t.fd(51, 0.0).to_radians() };
-    if !(dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite() && v.twist.is_finite()) {
+    let v = ViewDir { dir, target: t.p(17) };
+    if !(dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite()) {
         return (center, None);
     }
     if v.matrix().is_plan() {

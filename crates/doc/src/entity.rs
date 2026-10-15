@@ -873,20 +873,17 @@ pub struct Viewport {
     pub view3d: Option<ViewDir>,
 }
 /// A 3D view of model space as DXF stores it (VIEWPORT and VPORT groups 16/26/36 direction from
-/// the target towards the viewer, 17/27/37 target, 51 twist).
+/// the target towards the viewer, 17/27/37 target).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ViewDir {
     pub dir: Vec3,
     #[serde(default)]
     pub target: Vec3,
-    /// Radians, counterclockwise.
-    #[serde(default)]
-    pub twist: f64,
 }
 impl ViewDir {
     /// WCS → its view coordinates.
     pub fn matrix(&self) -> cadcraft_geom::Mat4 {
-        cadcraft_geom::Mat4::view(self.dir, self.target, self.twist)
+        cadcraft_geom::Mat4::view(self.dir, self.target, 0.0)
     }
     /// Whether it differs from the plan view of the WCS, which `None` stands for.
     pub fn is_3d(&self) -> bool {

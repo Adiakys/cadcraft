@@ -69,7 +69,7 @@ impl Part {
         match self {
             Part::Face => "The current view; click for the plan view (PLAN), drag to orbit",
             Part::Home => "Home: zoom to the drawing extents",
-            Part::Ring => "Compass: drag to turn the view about the Z axis",
+            Part::Ring => "Compass: drag to turn a 3D view about the Z axis",
         }
     }
 }
