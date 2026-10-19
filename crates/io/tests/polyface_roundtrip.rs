@@ -59,3 +59,34 @@ fn polyface_mesh_round_trips_through_dxf_and_dwg() {
         assert_eq!(mesh(&cadcraft_io::read(&dwg, "x.dwg").unwrap()), expected());
     }
 }
+
+#[test]
+fn a_polyface_mesh_too_large_for_its_record_is_saved_as_3d_faces() {
+    use cadcraft_doc::{Common, Space};
+    use cadcraft_io::{SaveOptions, read, write_with};
+    // 40,000 vertices: counts and indices past 32,767 don't fit the 16-bit groups 71–74.
+    let vertices: Vec<Vec3> = (0..40_000).map(|i| Vec3::new(f64::from(i), 0.0, f64::from(i % 7))).collect();
+    let mesh = PolyfaceMesh { vertices, faces: vec![[1, 2, 39_999, 0], [39_998, -39_999, 40_000, 3]] };
+    let mut d = Drawing::new_metric();
+    let common = Common { layer: "0".into(), ..Common::default() };
+    d.add(&Space::Model, common, EntityKind::PolyfaceMesh(mesh.clone())).unwrap();
+    let want = mesh.faces3d();
+    for binary in [false, true] {
+        let bytes = write_with(&d, "big.dxf", &SaveOptions { version: None, binary }).unwrap();
+        let back = read(&bytes, "big.dxf").unwrap();
+        let faces: Vec<_> = back
+            .model
+            .iter()
+            .filter_map(|e| match &e.kind {
+                EntityKind::Face3d(f) => Some(f.clone()),
+                _ => None,
+            })
+            .collect();
+        // Every face keeps its corners and hidden edges: no index was cut to 32,767.
+        assert_eq!(faces, want, "binary: {binary}");
+        assert!(back.model.iter().all(|e| !matches!(e.kind, EntityKind::PolyfaceMesh(_))), "binary: {binary}");
+        let mut handles: Vec<_> = back.model.iter().map(|e| e.handle).collect();
+        handles.dedup();
+        assert_eq!(handles.len(), back.model.iter().count(), "each face has its own handle");
+    }
+}

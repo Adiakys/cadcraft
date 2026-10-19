@@ -44,7 +44,11 @@ impl W {
         self.f(c + 10, p.y);
     }
     fn h(&mut self) -> String {
-        let h = format!("{:X}", self.next);
+        format!("{:X}", self.next_handle())
+    }
+    /// A new handle for a record the drawing doesn't hold (as [`W::h`]).
+    fn next_handle(&mut self) -> u64 {
+        let h = self.next;
         self.next = self.next.saturating_add(1);
         h
     }
@@ -622,6 +626,13 @@ fn text_tags(w: &mut W, d: &Drawing, t: &Text, attrib: Option<(&Attrib, Version)
     }
 }
 
+/// Whether a polyface mesh fits its POLYLINE record: vertex and face counts and indices within
+/// the 16-bit groups 71–74.
+fn polyface_fits(m: &cadcraft_doc::PolyfaceMesh) -> bool {
+    let max = usize::try_from(i16::MAX).unwrap_or(usize::MAX);
+    m.vertices.len() <= max && m.faces.len() <= max && m.faces.iter().flatten().all(|ix| i16::try_from(*ix).is_ok())
+}
+
 fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx) {
     match &e.kind {
         EntityKind::Line(l) => {
@@ -719,6 +730,15 @@ fn entity(w: &mut W, d: &Drawing, e: &Entity, owner: &str, paper: bool, cx: &Ctx
             w.s(330, e.handle.hex());
             w.s(100, "AcDbEntity");
             w.s(8, &e.common.layer);
+        }
+        // A polyface mesh's counts and vertex indices are 16-bit groups (71–74): one too large for
+        // them is written as its 3D faces rather than with indices cut short.
+        EntityKind::PolyfaceMesh(m) if !polyface_fits(m) => {
+            for (i, f) in m.faces3d().into_iter().enumerate() {
+                let handle = if i == 0 { e.handle } else { Handle(w.next_handle()) };
+                let face = Entity { handle, common: e.common.clone(), kind: EntityKind::Face3d(f) };
+                entity(w, d, &face, owner, paper, cx);
+            }
         }
         // Polyface mesh: the vertices (flags 64 | 128), then one face record (128) per face.
         EntityKind::PolyfaceMesh(m) => {

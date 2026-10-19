@@ -105,7 +105,12 @@ fn set_direction(s: &mut Session, cmd: &str, dir: Vec3) -> Result<Value> {
     if !(len.is_finite() && len > 1e-12) {
         return Err(bad(cmd, "the direction must be a non-zero vector"));
     }
-    model_only(s, cmd)?;
+    // Back to plan is always allowed; a 3D view needs a single model viewport.
+    if Mat4::view(dir, Vec3::ZERO, 0.0).is_plan() {
+        model_space(s, cmd)?;
+    } else {
+        model_only(s, cmd)?;
+    }
     let dir = dir * (1.0 / len);
     let st = s.state_mut()?;
     st.view_dir = dir;
@@ -127,9 +132,19 @@ fn run_vscurrent(s: &mut Session, p: &Value) -> Result<Value> {
     Ok(json!({ "style": style.label() }))
 }
 
-fn model_only(s: &Session, cmd: &str) -> Result<()> {
+fn model_space(s: &Session, cmd: &str) -> Result<()> {
     if s.layout_space() != Space::Model {
         return Err(bad(cmd, "3D views are for model space: switch to the Model tab"));
+    }
+    Ok(())
+}
+
+/// Model space in a single viewport, where a 3D view can be shown: tiled model viewports (VPORTS)
+/// draw in plan, so they show no 3D view.
+fn model_only(s: &Session, cmd: &str) -> Result<()> {
+    model_space(s, cmd)?;
+    if s.model_tiled() {
+        return Err(bad(cmd, "3D views need a single model viewport: VPORTS Single first"));
     }
     Ok(())
 }
@@ -192,6 +207,10 @@ impl Interactive for OrbitM {
 }
 
 impl Session {
+    /// Model space is split into tiled viewports (VPORTS): it shows no 3D view.
+    pub fn model_tiled(&self) -> bool {
+        self.doc().is_ok_and(|d| d.vports.iter().any(|c| c.is_active() && c.tiles.len() > 1))
+    }
     /// 3DORBIT is running: the UI turns drags into [`Session::orbit`].
     pub fn orbit_active(&self) -> bool {
         self.running.as_ref().is_some_and(|r| r.id == "3dorbit") && self.current_prompt().is_some_and(|p| p.message == ORBIT_PROMPT)
@@ -207,7 +226,7 @@ impl Session {
     /// Orbit model space by a drag of (`dx`, `dy`) pixels outside 3DORBIT, as dragging the
     /// ViewCube does; a layout stays in plan.
     pub fn drag_view(&mut self, dx: f64, dy: f64) -> Result<()> {
-        if !(dx.is_finite() && dy.is_finite()) || self.layout_space() != Space::Model {
+        if !(dx.is_finite() && dy.is_finite()) || self.layout_space() != Space::Model || self.model_tiled() {
             return Ok(());
         }
         let k = std::f64::consts::PI / self.viewport_px.0.max(1.0);
@@ -216,7 +235,7 @@ impl Session {
     /// Turn a 3D view by `angle` (radians, counterclockwise) about the Z axis, as the ViewCube's
     /// compass ring does. A view straight down or up the Z axis has no azimuth to turn.
     pub fn rotate_view(&mut self, angle: f64) -> Result<()> {
-        if !angle.is_finite() || self.layout_space() != Space::Model {
+        if !angle.is_finite() || self.layout_space() != Space::Model || self.model_tiled() {
             return Ok(());
         }
         let st = self.state()?;

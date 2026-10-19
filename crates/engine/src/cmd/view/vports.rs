@@ -140,6 +140,10 @@ fn apply(s: &mut Session, mut tiles: Vec<VportTile>, current: usize) -> Result<(
     if tiles.is_empty() {
         return Err(EngineError::Other("A viewport configuration needs a viewport.".into()));
     }
+    // Tiles draw in plan: a 3D model view goes back to plan before model space is split.
+    if tiles.len() > 1 && !cadcraft_geom::Mat4::view(s.state()?.view_dir, cadcraft_geom::Vec3::ZERO, 0.0).is_plan() {
+        return Err(EngineError::Other("Tiled viewports show model space in plan: PLAN first.".into()));
+    }
     let cur = tiles.remove(current.min(tiles.len() - 1));
     tiles.insert(0, cur);
     let st = s.state_mut()?;

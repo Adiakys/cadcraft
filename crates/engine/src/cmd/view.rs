@@ -130,6 +130,8 @@ pub(crate) fn zoom(s: &mut Session, p: &Value) -> Result<Value> {
     let mode = str_param(p, "mode").unwrap_or("extents").to_ascii_lowercase();
     match mode.as_str() {
         "extents" | "e" => s.zoom_extents()?,
+        // In a 3D view ZOOM All is ZOOM Extents: the limits frame the plan view.
+        "all" | "a" if s.state()?.projection().is_some() => s.zoom_extents()?,
         "all" | "a" => {
             let b = ext_bounds(s)?.union(&s.zoom_limits()?);
             fit(s, b.expand(b.height().max(b.width()) * 0.02))?;

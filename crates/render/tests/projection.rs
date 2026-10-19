@@ -151,3 +151,38 @@ fn a_layout_viewport_shows_model_space_from_its_view_direction() {
     let (a, b) = (column[0][0], column[0][1]);
     assert!((a.x - 50.0).abs() < 1e-6 && (b.x - 50.0).abs() < 1e-6 && (a.y - 45.0).abs() < 1e-6 && (b.y - 55.0).abs() < 1e-6, "{a:?} {b:?}");
 }
+
+#[test]
+fn plotted_shaded_faces_keep_their_layers_and_transparency() {
+    use cadcraft_render::{Kind, build_plot};
+    let mut d = Drawing::new_metric();
+    for name in ["Faces", "Lines"] {
+        d.layers.push(cadcraft_doc::Layer::new(name));
+    }
+    let (mut common, kind) = face(0.0, 1);
+    common.layer = "Faces".into();
+    common.transparency = cadcraft_doc::Transparency::Percent(40);
+    d.add(&Space::Model, common, kind).unwrap();
+    for x in [0.0, 2.0] {
+        let lines = Common { layer: "Lines".into(), ..Common::default() };
+        d.add(&Space::Model, lines, line(Vec3::new(x, -1.0, 0.0), Vec3::new(x + 1.0, -1.0, 0.0))).unwrap();
+    }
+    let index = |n: &str| d.layers.iter().position(|l| l.name == n).unwrap() as u32;
+    let iso = Mat4::view(Vec3::new(1.0, -1.0, 1.0), Vec3::ZERO, 0.0);
+    let opts = Options { projection: Some(iso), shaded: true, transparency: true, ..Options::default() };
+    // A plot's layers stay parallel to its primitives, the faces (drawn first) on their own.
+    let plot = build_plot(&d, &Space::Model, &opts);
+    assert_eq!(plot.prim_layers.len(), plot.prims.len());
+    assert_eq!(plot.prims.first().map(|p| p.kind), Some(Kind::Tris));
+    for (p, layer) in plot.prims.iter().zip(&plot.prim_layers) {
+        let want = if p.kind == Kind::Tris { index("Faces") } else { index("Lines") };
+        assert_eq!(*layer, want, "{p:?}");
+    }
+    // A face is as transparent as itself, not as what contains it.
+    let screen = build(&d, &Space::Model, &opts);
+    assert!(screen.prim_layers.is_empty());
+    let fill = screen.prims.iter().find(|p| p.kind == Kind::Tris).unwrap();
+    assert_eq!(fill.transparency, 40);
+    let opaque = build(&d, &Space::Model, &Options { transparency: false, ..opts.clone() });
+    assert_eq!(opaque.prims.iter().find(|p| p.kind == Kind::Tris).map(|p| p.transparency), Some(0));
+}

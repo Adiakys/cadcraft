@@ -1,6 +1,6 @@
 # Where CADCraft falls short of AutoCAD
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-16 · **Change:** minor (Command Aliases dialog for ALIASEDIT: U12 and E5 narrowed) · **Target:** Autodesk AutoCAD 2027
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-19 · **Change:** minor (3D views: tiled model viewports stay in plan, F24 limits) · **Target:** Autodesk AutoCAD 2027
 
 Every known shortfall, one row each, ranked within each section by user impact. This is the work
 list: agents pick from here (top of a section first), and remove or update a row in the same PR
@@ -45,7 +45,7 @@ do them first.
 | F21 | MLINE, REGION and HELIX are objects since #510, with gaps: MLEDIT tees trim square; UNION/SUBTRACT/INTERSECT only combine regions whose boundaries don't meet; regions are saved as closed polylines (no ACIS data); PURGE skips multiline styles | `draw2/mline.rs`, `inquiry/regions.rs`, `dxf_region.rs` | Low | 6–10 |
 | F22 | Inquiry leftovers (COUNT across spaces and nested blocks, the QuickCalc palette and COMPARE landed, #563; MASSPROP on regions, #510): COMPARE compares the tab shown, not every layout at once, and has no COMPAREEXPORT report; QuickCalc keeps its history and variables for the session only | `file/compare.rs`, `palettes/quickcalc.rs` | Low | 3–5 |
 | F23 | No Sheet Set Manager, eTransmit, Share, Traces, Markup Import, Activity Insights | menu items uncovered | Low-medium (team workflows) | 40–70 |
-| F24 | 3D views (VPOINT, PLAN, View ▸ 3D Views presets, 3DORBIT, ViewCube, saved in DXF/DWG) and the 2D Wireframe, Shaded and Shaded with Edges visual styles landed; polyface meshes are read, drawn and saved; left: UCS, solids, surfaces, editable meshes, sections, other visual styles, materials, lights, rendering; in a 3D view, picking and object snaps on objects off the XY plane are approximate, points are entered on the XY plane (or in view coordinates when it is seen edge-on), the UCS icon and grid stay in plan, and MSPACE in a 3D layout viewport works in its plan (150 menu items) | [parity-checklist](parity-checklist.md) | Medium (3D users) | 300–450 |
+| F24 | 3D views (VPOINT, PLAN, View ▸ 3D Views presets, 3DORBIT, ViewCube, saved in DXF/DWG) and the 2D Wireframe, Shaded and Shaded with Edges visual styles landed; polyface meshes are read, drawn and saved; left: UCS, solids, surfaces, editable meshes, sections, other visual styles, materials, lights, rendering; in a 3D view, picking and object snaps on objects off the XY plane are approximate, points are entered on the XY plane (or in view coordinates when it is seen edge-on), the UCS icon and grid stay in plan, MSPACE in a 3D layout viewport works in its plan, and tiled model viewports (VPORTS) stay in plan (150 menu items) | [parity-checklist](parity-checklist.md) | Medium (3D users) | 300–450 |
 
 ## UI/UX
 
@@ -150,6 +150,7 @@ Detail: [localization-parity.md](localization-parity.md).
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-19 | minor | 3D views: highlights drawn where the view puts them, shaded faces plotted on their own PDF layers with their own transparency, ZOOM All as ZOOM Extents; tiled model viewports stay in plan (F24 limits) |
 | 2026-10-16 | minor | ALIASEDIT typed or from Tools ▸ Customize opens the Command Aliases dialog (user aliases next to the built-in ones; Add, Edit, Remove; OK, Cancel, Apply), #1381: U12 and E5 narrowed |
 | 2026-10-16 | minor | MOCORO (Tools ▸ Express Tools ▸ Move/Copy/Rotate): select objects and a base point once, then Move, Copy, Rotate, Scale, Base and Undo until eXit, one undo step; JSON form `{base, ops}`: E3 narrowed |
 | 2026-10-16 | minor | MLEDIT Merged Tee (MT): the first multiline's outer elements stop at the second one's near side, which opens, and its inner elements run on to the second one's inner element: F21 narrowed, hours unchanged |

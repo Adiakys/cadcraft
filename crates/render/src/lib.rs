@@ -605,6 +605,10 @@ fn faces_first(mut faces: Vec<project::ShadedFace>, rest: DisplayList) -> Displa
             start,
             len: f.tris.len() as u32,
         });
+        // `prim_layers` stays parallel to `prims` (a plot's faces have their layer).
+        if let Some(layer) = f.layer {
+            list.prim_layers.push(layer);
+        }
     }
     append(&mut list, rest);
     list

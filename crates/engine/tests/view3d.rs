@@ -126,3 +126,46 @@ fn a_drawing_saved_in_a_3d_view_opens_in_it() {
     let _ = std::fs::remove_file(&path);
     assert_eq!(s.view_name(), "Top");
 }
+
+#[test]
+fn tiled_model_viewports_stay_in_plan() {
+    // Split model space: the tiles draw in plan, so a 3D view is refused, and so is an orbit.
+    let mut s = session_with_a_column();
+    s.execute("-vports", &json!({"option": "2"})).unwrap();
+    assert!(s.model_tiled());
+    for (cmd, p) in [("vpoint", json!({"preset": "swiso"})), ("vpoint.front", json!({})), ("3dorbit", json!({"azimuth": 30}))] {
+        let e = s.execute(cmd, &p).unwrap_err();
+        assert!(e.to_string().contains("single model viewport"), "{cmd}: {e}");
+    }
+    s.drag_view(100.0, 50.0).unwrap();
+    s.rotate_view(0.5).unwrap();
+    assert!(s.state().unwrap().projection().is_none(), "the ViewCube and its compass leave tiles in plan");
+    // Back to plan is always allowed.
+    s.execute("plan", &json!({})).unwrap();
+    s.execute("vpoint.top", &json!({})).unwrap();
+    // A single viewport takes a 3D view again; from there model space is not split.
+    s.execute("-vports", &json!({"option": "single"})).unwrap();
+    s.execute("vpoint", &json!({"preset": "swiso"})).unwrap();
+    assert!(s.execute("-vports", &json!({"option": "2"})).is_err());
+    assert!(!s.model_tiled());
+    s.execute("plan", &json!({})).unwrap();
+    s.execute("-vports", &json!({"option": "2"})).unwrap();
+    assert!(s.model_tiled());
+}
+
+#[test]
+fn zoom_all_and_an_empty_drawing_in_a_3d_view() {
+    // ZOOM All in a 3D view is ZOOM Extents: the plan-view limits don't widen it.
+    let mut s = session_with_a_column();
+    s.execute("vpoint", &json!({"preset": "front"})).unwrap();
+    s.execute("zoom", &json!({"mode": "extents"})).unwrap();
+    let extents = s.state().unwrap().view();
+    s.execute("zoom", &json!({"mode": "all"})).unwrap();
+    assert_eq!(s.state().unwrap().view(), extents);
+    // An empty drawing shows its limits (0,0 to 12,9 on the ground) as the view sees them: from
+    // the front, a line along the ground.
+    let mut s = cadcraft_engine::Session::new();
+    s.execute("vpoint", &json!({"preset": "front"})).unwrap();
+    let v = s.state().unwrap().view();
+    assert!((v.center.x - 6.0).abs() < 1e-9 && v.center.y.abs() < 1e-9, "{v:?}");
+}

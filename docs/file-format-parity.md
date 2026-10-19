@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-17 · **Change:** minor (DWG read leaves out orphaned DGN line style components) · **Target:** Autodesk AutoCAD 2027
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-19 · **Change:** minor (oversized polyface meshes saved as 3D faces) · **Target:** Autodesk AutoCAD 2027
 
 Every format AutoCAD 2027 reads or writes, with CADCraft's support, fidelity and tests. Work
 items are in [gaps.md](gaps.md#file-formats); the weighted score feeds
@@ -138,6 +138,7 @@ our output in AutoCAD black-box.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-19 | minor | A polyface mesh whose counts or vertex indices pass the 16-bit groups 71–74 (over 32,767) is saved as its 3D faces instead of with its indices cut short, in ASCII and binary DXF and DWG |
 | 2026-10-17 | minor | DWG read: DGN line style components no line style definition reaches are left out before the DXF bridge, with a read note; an 83 MB site plan with 888,483 of them (1.2 GB of DXF, over the limit) now opens (#1482) |
 | 2026-10-13 | minor | A plan VIEWPORT or VPORT whose view is kept in its target (centre relative to it, as DWG files often store it) opens on that view instead of the origin |
 | 2026-10-13 | minor | VIEWPORT and the `*Active` VPORT keep their 3D view direction and target (groups 16, 17): layouts draw 3D viewports, a drawing saved in a 3D view opens in it |
