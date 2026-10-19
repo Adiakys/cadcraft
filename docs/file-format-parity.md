@@ -138,6 +138,7 @@ our output in AutoCAD black-box.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-19 | minor | The `*Active` VPORT of a drawing saved in a 3D view frames what the view draws, objects off the XY plane included; polyface face records naming missing vertices are dropped on read instead of written back |
 | 2026-10-19 | minor | VIEW: a named view saved in a 3D view keeps its direction and target (groups 11 and 12) and is restored in it; a plan view is restored in plan |
 | 2026-10-19 | minor | A polyface mesh whose counts or vertex indices pass the 16-bit groups 71–74 (over 32,767) is saved as its 3D faces instead of with its indices cut short, in ASCII and binary DXF and DWG |
 | 2026-10-17 | minor | DWG read: DGN line style components no line style definition reaches are left out before the DXF bridge, with a read note; an 83 MB site plan with 888,483 of them (1.2 GB of DXF, over the limit) now opens (#1482) |

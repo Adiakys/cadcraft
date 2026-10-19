@@ -1718,9 +1718,17 @@ fn vport_table(w: &mut W, d: &Drawing, ext: Bounds2) {
     // A single *Active viewport keeps its 3D view, on the extents seen from it.
     let view3d = d.vports.iter().find(|c| c.is_active() && c.tiles.len() == 1).and_then(|c| c.tiles.first()).and_then(|t| t.view3d);
     let seen = match view3d {
+        // What the view draws, objects off the XY plane included (as ZOOM Extents frames it).
         Some(v) if !ext.is_empty() => {
-            let m = v.matrix().plane(0.0);
-            Bounds2::from_points(ext.corners().map(|p| m.apply(p)))
+            let tolerance = (ext.width().max(ext.height()) / 1000.0).max(1e-9);
+            let opts = cadcraft_render::Options { projection: Some(v.matrix()), tolerance, ..cadcraft_render::Options::default() };
+            let drawn = cadcraft_render::build(d, &Space::Model, &opts).bounds;
+            if drawn.is_empty() {
+                let m = v.matrix().plane(0.0);
+                Bounds2::from_points(ext.corners().map(|p| m.apply(p)))
+            } else {
+                drawn
+            }
         }
         _ => ext,
     };

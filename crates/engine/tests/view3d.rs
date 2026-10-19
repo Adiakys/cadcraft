@@ -209,4 +209,13 @@ fn named_views_keep_their_3d_direction() {
     s.execute("-vports", &json!({"option": "2"})).unwrap();
     assert!(s.execute("view", &json!({"option": "restore", "name": "Iso"})).is_err());
     assert!(s.state().unwrap().projection().is_none());
+    // Refused from a layout too, before anything changes: the tab and the selection stay.
+    let layout = s.doc().unwrap().layouts[0].name.clone();
+    s.execute("layout.set", &json!({"name": layout})).unwrap();
+    let sel = s.doc().unwrap().model.iter().map(|e| e.handle).take(1).collect::<Vec<_>>();
+    s.set_selection(sel.clone());
+    let before = s.layout_space();
+    assert!(s.execute("view", &json!({"option": "restore", "name": "Iso"})).is_err());
+    assert_eq!(s.layout_space(), before);
+    assert_eq!(s.selection(), sel);
 }

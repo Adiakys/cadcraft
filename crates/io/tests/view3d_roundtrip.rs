@@ -72,3 +72,23 @@ fn a_plan_viewport_centred_on_its_target_reads_as_a_model_centre() {
         .unwrap();
     assert_eq!((v.view_center, v.view3d), (Vec2::new(11.0, 22.0), None));
 }
+
+#[test]
+fn a_saved_3d_view_frames_objects_off_the_xy_plane() {
+    use cadcraft_doc::Line;
+    // A small square on the ground and a column 100 high: from the front, the view must take in
+    // the column, not only the footprint at z = 0.
+    let mut d = Drawing::new_metric();
+    for (a, b) in [((0.0, 0.0, 0.0), (2.0, 0.0, 0.0)), ((2.0, 0.0, 0.0), (2.0, 2.0, 0.0)), ((0.0, 0.0, 0.0), (0.0, 0.0, 100.0))] {
+        let line = Line { a: Vec3::new(a.0, a.1, a.2), b: Vec3::new(b.0, b.1, b.2) };
+        d.add(&Space::Model, Common::default(), EntityKind::Line(line)).unwrap();
+    }
+    let front = ViewDir { dir: Vec3::new(0.0, -1.0, 0.0), target: Vec3::ZERO };
+    let tile = VportTile { max: Vec2::new(1.0, 1.0), height: 1.0, aspect: 1.5, view3d: Some(front), ..VportTile::default() };
+    d.vports.push(VportConfig { name: VportConfig::ACTIVE.into(), tiles: vec![tile] });
+    let back = read_dxf(write_dxf(&d).as_bytes()).unwrap();
+    let t = back.vports.iter().find(|c| c.is_active()).and_then(|c| c.tiles.first()).copied().unwrap();
+    assert!(near(t.view3d, front));
+    assert!(t.height >= 100.0, "the view is {} high", t.height);
+    assert!((t.center.y - 50.0).abs() < 1.0, "centred on the column, not the ground: {:?}", t.center);
+}

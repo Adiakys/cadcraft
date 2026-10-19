@@ -1145,8 +1145,12 @@ fn parse_entities(recs: &[(String, Vec<Tag>)], d: &mut Drawing, rx: &mut Rx, ski
                 let c = common(&t);
                 let k = if flags & 64 != 0 {
                     // Face indices outside 16 bits name no vertex: the face is skipped when drawn.
-                    let faces = faces.iter().map(|f| f.map(|ix| i32::try_from(ix).unwrap_or(i32::MAX))).collect();
-                    let mesh = PolyfaceMesh { vertices: pts.iter().map(|p| p.0).collect(), faces };
+                    let faces: Vec<[i32; 4]> = faces.iter().map(|f| f.map(|ix| i32::try_from(ix).unwrap_or(i32::MAX))).collect();
+                    let mut mesh = PolyfaceMesh { vertices: pts.iter().map(|p| p.0).collect(), faces: Vec::new() };
+                    // Only faces whose indices name its vertices are kept: a broken one isn't
+                    // written back.
+                    let n = mesh.vertices.len();
+                    mesh.faces = faces.into_iter().filter(|f| face_names_vertices(f, n)).collect();
                     if mesh.faces3d().is_empty() {
                         *skipped = skipped.saturating_add(1);
                         continue;
@@ -1342,6 +1346,13 @@ fn annotative(tags: &[Tag]) -> bool {
 /// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target) of a VIEWPORT or
 /// VPORT record. The centre is relative to the target: a plan view gets it added
 /// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
+/// Whether a polyface face record names 3 or 4 of the mesh's `n` vertices (1-based indices, a
+/// negative one for a hidden edge, 0 for an unused corner), as [`PolyfaceMesh::faces3d`] draws it.
+fn face_names_vertices(f: &[i32; 4], n: usize) -> bool {
+    let used: Vec<i32> = f.iter().copied().filter(|&ix| ix != 0).collect();
+    (3..=4).contains(&used.len()) && used.iter().all(|ix| usize::try_from(ix.unsigned_abs()).is_ok_and(|k| (1..=n).contains(&k)))
+}
+
 fn view(t: &T) -> (Vec2, Option<ViewDir>) {
     view_at(t, Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0)), 16, 17)
 }

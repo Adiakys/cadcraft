@@ -179,14 +179,15 @@ fn restore(s: &mut Session, name: &str) -> Result<Value> {
             // A model space view: into the active MSPACE viewport, else on the Model tab. A 3D
             // view is the Model tab's (layout viewports keep their own direction).
             let in_3d = v.view3d.filter(|v3| v3.is_3d() && v3.dir.is_finite() && v3.dir.len() > 1e-12 && v3.target.is_finite());
-            if s.layout_space() != Space::Model && (s.state()?.active_viewport().is_none() || in_3d.is_some()) {
-                super::run_layout_set(s, &json!({ "name": "Model" }))?;
-            }
+            // Refused before anything changes (the tab, the selection).
             if in_3d.is_some() && s.model_tiled() {
                 return Err(EngineError::Other(format!(
                     "View \"{}\" is a 3D view: 3D views need a single model viewport (VPORTS Single first).",
                     v.name
                 )));
+            }
+            if s.layout_space() != Space::Model && (s.state()?.active_viewport().is_none() || in_3d.is_some()) {
+                super::run_layout_set(s, &json!({ "name": "Model" }))?;
             }
             let (w, h) = s.viewport_px;
             let on_model_tab = s.layout_space() == Space::Model;
