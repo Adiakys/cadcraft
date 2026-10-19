@@ -150,7 +150,7 @@ Detail: [localization-parity.md](localization-parity.md).
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-19 | minor | 3D views: highlights drawn where the view puts them, shaded faces plotted on their own PDF layers with their own transparency, ZOOM All as ZOOM Extents; tiled model viewports stay in plan (F24 limits) |
+| 2026-10-19 | minor | 3D views: highlights drawn where the view puts them, shaded faces plotted on their own PDF layers with their own transparency, ZOOM All as ZOOM Extents; tiled model viewports stay in plan (F24 limits); named views keep their 3D direction, and a 3D view's drag preview is drawn from the moved objects |
 | 2026-10-16 | minor | ALIASEDIT typed or from Tools ▸ Customize opens the Command Aliases dialog (user aliases next to the built-in ones; Add, Edit, Remove; OK, Cancel, Apply), #1381: U12 and E5 narrowed |
 | 2026-10-16 | minor | MOCORO (Tools ▸ Express Tools ▸ Move/Copy/Rotate): select objects and a base point once, then Move, Copy, Rotate, Scale, Base and Undo until eXit, one undo step; JSON form `{base, ops}`: E3 narrowed |
 | 2026-10-16 | minor | MLEDIT Merged Tee (MT): the first multiline's outer elements stop at the second one's near side, which opens, and its inner elements run on to the second one's inner element: F21 narrowed, hours unchanged |

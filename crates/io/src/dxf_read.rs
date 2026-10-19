@@ -1343,9 +1343,14 @@ fn annotative(tags: &[Tag]) -> bool {
 /// VPORT record. The centre is relative to the target: a plan view gets it added
 /// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
 fn view(t: &T) -> (Vec2, Option<ViewDir>) {
-    let center = Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0));
-    let dir = if t.f(16).is_some() { t.p(16) } else { Vec3::Z };
-    let v = ViewDir { dir, target: t.p(17) };
+    view_at(t, Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0)), 16, 17)
+}
+
+/// A view centre relative to the target, with the direction in group `dir_code` and the target
+/// in `target_code` (VIEWPORT and VPORT: 16, 17; VIEW: 11, 12), as [`view`] reads them.
+fn view_at(t: &T, center: Vec2, dir_code: i32, target_code: i32) -> (Vec2, Option<ViewDir>) {
+    let dir = if t.f(dir_code).is_some() { t.p(dir_code) } else { Vec3::Z };
+    let v = ViewDir { dir, target: t.p(target_code) };
     if !(dir.is_finite() && dir.len() > 1e-12 && v.target.is_finite()) {
         return (center, None);
     }
@@ -1528,7 +1533,9 @@ fn tables(tags: &[Tag], d: &mut Drawing, rx: &mut Rx) {
                 // 70 bit 1: a paper space view; its layout is CADCraft xdata.
                 let layout = (t.i(70).unwrap_or(0) & 1 != 0).then(|| field("LAYOUT").unwrap_or_default());
                 let twist = t.f(50).filter(|a| a.is_finite()).map_or(0.0, |a| a.rem_euclid(360.0).to_radians());
-                let v = NamedView { name: name.clone(), center, height: h, width: w, layer_state: field("LAYERSTATE"), twist, layout };
+                // 11 direction, 12 target: a model space view seen in 3D.
+                let (center, view3d) = if layout.is_none() { view_at(&t, center, 11, 12) } else { (center, None) };
+                let v = NamedView { name: name.clone(), center, height: h, width: w, layer_state: field("LAYERSTATE"), twist, layout, view3d };
                 match d.views.iter_mut().find(|x| x.name.eq_ignore_ascii_case(&name)) {
                     Some(x) => *x = v,
                     None => d.views.push(v),

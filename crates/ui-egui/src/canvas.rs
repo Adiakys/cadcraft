@@ -976,6 +976,13 @@ fn draw_highlight_gpu(
 /// `clipboard` is the session's clipboard and its serial (dragged when `drag.clipboard`, by PASTE).
 /// `transparency`: TRANSPARENCYDISPLAY (dragged objects keep their transparency).
 #[allow(clippy::too_many_arguments)]
+/// Whether a command's drag is drawn by the GPU, as the objects' display list moved by the
+/// command's matrix. The matrix is a WCS transform and a 3D view's list is in view coordinates, so
+/// a 3D view draws the session's transformed copies instead ([`cadcraft_engine::Session::preview`]).
+fn drag_on_gpu(gpu: bool, xf: &Xf) -> bool {
+    gpu && xf.projection.is_none()
+}
+
 fn draw_drag_gpu(
     c: &mut CanvasState,
     p: &egui::Painter,
@@ -2062,7 +2069,7 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui) {
     }
     // Rubber band preview of the active command.
     // `xf` is the space being edited: paper space, or model space inside the active viewport.
-    let drag = match (app.canvas.cursor, app.canvas.gpu.is_some()) {
+    let drag = match (app.canvas.cursor, drag_on_gpu(app.canvas.gpu.is_some(), &xf)) {
         (Some(c), true) => app.session.drag(c),
         _ => None,
     };
@@ -2798,6 +2805,17 @@ pub(crate) mod tests {
 
     fn hs(v: &[u64]) -> Vec<Handle> {
         v.iter().map(|&h| Handle(h)).collect()
+    }
+
+    /// The GPU drag moves the list by the command's WCS matrix: only in plan view.
+    #[test]
+    fn a_3d_view_drags_on_the_cpu() {
+        let rect = Rect::from_min_size(Pos2::ZERO, vec2(200.0, 100.0));
+        let plan = Xf::new(rect, Vec2::ZERO, 10.0);
+        let iso = Xf { projection: Some(Mat4::view(cadcraft_geom::Vec3::new(-1.0, -1.0, 1.0), cadcraft_geom::Vec3::ZERO, 0.0)), ..plan };
+        assert!(drag_on_gpu(true, &plan));
+        assert!(!drag_on_gpu(true, &iso));
+        assert!(!drag_on_gpu(false, &plan));
     }
 
     /// A dragged object keeps its transparency in the GPU preview when TRANSPARENCYDISPLAY is

@@ -169,3 +169,44 @@ fn zoom_all_and_an_empty_drawing_in_a_3d_view() {
     let v = s.state().unwrap().view();
     assert!((v.center.x - 6.0).abs() < 1e-9 && v.center.y.abs() < 1e-9, "{v:?}");
 }
+
+#[test]
+fn named_views_keep_their_3d_direction() {
+    let view = |s: &mut Session, p: serde_json::Value| s.execute("view", &p).unwrap();
+    let mut s = session_with_a_column();
+    let top = s.state().unwrap().view();
+    view(&mut s, json!({"option": "save", "name": "Top"}));
+    s.execute("vpoint", &json!({"preset": "swiso"})).unwrap();
+    let (iso_dir, iso) = (s.state().unwrap().view_dir, s.state().unwrap().view());
+    view(&mut s, json!({"option": "save", "name": "Iso"}));
+    let saved = s.doc().unwrap().views.iter().find(|v| v.name == "Iso").and_then(|v| v.view3d).unwrap();
+    assert_eq!(saved.dir, iso_dir);
+    assert!(s.doc().unwrap().views.iter().find(|v| v.name == "Top").unwrap().view3d.is_none());
+    // A plan view restored from a 3D view goes back to plan, at its own centre.
+    view(&mut s, json!({"option": "restore", "name": "Top"}));
+    assert!(s.state().unwrap().projection().is_none());
+    assert!((s.state().unwrap().view().center - top.center).len() < 1e-9);
+    // A 3D view restored from plan turns the view back to its direction, at its centre.
+    view(&mut s, json!({"option": "restore", "name": "Iso"}));
+    let st = s.state().unwrap();
+    assert_eq!(st.view_dir, iso_dir);
+    assert!((st.view().center - iso.center).len() < 1e-9 && (st.view().height - iso.height).abs() < 1e-9, "{:?} vs {iso:?}", st.view());
+    // A view kept in its target (as files store it): the centre moves to the editor's coordinates.
+    // From the front, a target at (3, 0, 4) is at (3, 4).
+    let d = s.doc_mut().unwrap();
+    let v = d.views.iter_mut().find(|v| v.name == "Iso").unwrap();
+    v.center = cadcraft_engine::geom::Vec2::ZERO;
+    v.view3d = Some(cadcraft_engine::doc::ViewDir {
+        dir: cadcraft_engine::geom::Vec3::new(0.0, -2.0, 0.0),
+        target: cadcraft_engine::geom::Vec3::new(3.0, 0.0, 4.0),
+    });
+    view(&mut s, json!({"option": "restore", "name": "Iso"}));
+    let st = s.state().unwrap();
+    assert_eq!(st.view_dir, cadcraft_engine::geom::Vec3::new(0.0, -1.0, 0.0));
+    assert!((st.view().center - cadcraft_engine::geom::Vec2::new(3.0, 4.0)).len() < 1e-9, "{:?}", st.view());
+    // Tiled model viewports stay in plan: a 3D view isn't restored into them.
+    view(&mut s, json!({"option": "restore", "name": "Top"}));
+    s.execute("-vports", &json!({"option": "2"})).unwrap();
+    assert!(s.execute("view", &json!({"option": "restore", "name": "Iso"})).is_err());
+    assert!(s.state().unwrap().projection().is_none());
+}

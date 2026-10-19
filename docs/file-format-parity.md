@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-19 · **Change:** minor (oversized polyface meshes saved as 3D faces) · **Target:** Autodesk AutoCAD 2027
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-19 · **Change:** minor (named views keep their 3D direction; oversized polyface meshes saved as 3D faces) · **Target:** Autodesk AutoCAD 2027
 
 Every format AutoCAD 2027 reads or writes, with CADCraft's support, fidelity and tests. Work
 items are in [gaps.md](gaps.md#file-formats); the weighted score feeds
@@ -91,7 +91,7 @@ on read with a note, so such files no longer exceed the DXF limit (#1482). **DWG
 | 3DSOLID, BODY, SURFACE, MESH, SHAPE, UNDERLAY, OLE2FRAME, LIGHT, CAMERA, SECTION, POINTCLOUD, proxy entities | kept as Unknown (raw tags) | written back as read, with their CLASS records (#528); **dropped by DWG save** (acadrust), except MESH, which the DWG keeps with every vertex and face | only their layer follows edits |
 | Header variables | all read | 36 written | AutoCAD writes about 280 |
 | Tables: LAYER (+ transparency, description), LTYPE, STYLE, DIMSTYLE, BLOCK_RECORD | yes | yes | |
-| Tables: VPORT, VIEW, UCS, APPID | yes | yes: saved viewport configurations (#504), the model view's 3D direction in `*Active` (the drawing opens in it), named views, UCSs | UCS elevation lost |
+| Tables: VPORT, VIEW, UCS, APPID | yes | yes: saved viewport configurations (#504), the model view's 3D direction in `*Active` (the drawing opens in it), named views (with a 3D view's direction and target, groups 11 and 12), UCSs | UCS elevation lost |
 | Objects: LAYOUT, DICTIONARY, XRECORD, TABLESTYLE, DIMASSOC | yes | yes | |
 | Objects: GROUP, MLINESTYLE, MLEADERSTYLE, IMAGEDEF, SCALE | yes | yes (groups #417, scale list #468) | |
 | Objects: VISUALSTYLE, PLOTSETTINGS, materials, field objects and other unmodelled objects | kept raw (#528) | written back as read | not editable |
@@ -138,6 +138,7 @@ our output in AutoCAD black-box.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-19 | minor | VIEW: a named view saved in a 3D view keeps its direction and target (groups 11 and 12) and is restored in it; a plan view is restored in plan |
 | 2026-10-19 | minor | A polyface mesh whose counts or vertex indices pass the 16-bit groups 71–74 (over 32,767) is saved as its 3D faces instead of with its indices cut short, in ASCII and binary DXF and DWG |
 | 2026-10-17 | minor | DWG read: DGN line style components no line style definition reaches are left out before the DXF bridge, with a read note; an 83 MB site plan with 888,483 of them (1.2 GB of DXF, over the limit) now opens (#1482) |
 | 2026-10-13 | minor | A plan VIEWPORT or VPORT whose view is kept in its target (centre relative to it, as DWG files often store it) opens on that view instead of the origin |

@@ -140,3 +140,22 @@ fn hostile_vport_records_are_skipped() {
     assert_eq!(active.tiles.iter().map(|t| t.height).collect::<Vec<_>>(), [4.0, 8.0]);
     assert_eq!(round_trip(&d).vports, d.vports);
 }
+
+#[test]
+fn a_model_view_keeps_its_3d_direction_and_target() {
+    use cadcraft_doc::ViewDir;
+    use cadcraft_doc::geom::Vec3;
+    let mut d = Drawing::new_imperial();
+    let view3d = Some(ViewDir { dir: Vec3::new(-1.0, -1.0, 1.0), target: Vec3::new(1.0, 2.0, 3.0) });
+    d.views.push(NamedView { name: "Iso".into(), center: Vec2::new(0.5, -1.5), height: 20.0, width: 30.0, view3d, ..Default::default() });
+    d.views.push(NamedView { name: "Top".into(), center: Vec2::new(5.0, 5.0), height: 20.0, width: 30.0, ..Default::default() });
+    let back = round_trip(&d);
+    let get = |n: &str| back.views.iter().find(|v| v.name == n).cloned().expect("view");
+    assert_eq!(get("Iso").view3d, view3d);
+    assert_eq!(get("Iso").center, Vec2::new(0.5, -1.5));
+    assert_eq!(get("Top").view3d, None);
+    // Through DWG too.
+    let dwg = cadcraft_io::write(&d, "v.dwg").expect("dwg");
+    let back = cadcraft_io::read(&dwg, "v.dwg").expect("reopen dwg");
+    assert_eq!(back.views.iter().find(|v| v.name == "Iso").and_then(|v| v.view3d), view3d);
+}
