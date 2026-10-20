@@ -1343,9 +1343,6 @@ fn annotative(tags: &[Tag]) -> bool {
     list.iter().filter(|t| t.code == 1070).nth(1).is_some_and(|t| t.i64() != 0)
 }
 
-/// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target) of a VIEWPORT or
-/// VPORT record. The centre is relative to the target: a plan view gets it added
-/// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
 /// Whether a polyface face record names 3 or 4 of the mesh's `n` vertices (1-based indices, a
 /// negative one for a hidden edge, 0 for an unused corner), as [`PolyfaceMesh::faces3d`] draws it.
 fn face_names_vertices(f: &[i32; 4], n: usize) -> bool {
@@ -1353,6 +1350,9 @@ fn face_names_vertices(f: &[i32; 4], n: usize) -> bool {
     (3..=4).contains(&used.len()) && used.iter().all(|ix| usize::try_from(ix.unsigned_abs()).is_ok_and(|k| (1..=n).contains(&k)))
 }
 
+/// The view centre (12/22) and 3D view (16/26/36 direction, 17/27/37 target) of a VIEWPORT or
+/// VPORT record. The centre is relative to the target: a plan view gets it added
+/// (DWG files often keep the view in the target with the centre at 0,0), a 3D view keeps both.
 fn view(t: &T) -> (Vec2, Option<ViewDir>) {
     view_at(t, Vec2::new(t.fd(12, 0.0), t.fd(22, 0.0)), 16, 17)
 }
