@@ -141,62 +141,82 @@ fn save_options(cmd: &str, p: &Value) -> Result<SaveAs> {
 
 /// TrueType fonts of Linux and open-source systems that AutoCAD on Windows doesn't install, and
 /// the Windows font a file gets instead: the metric-compatible one for the Liberation families,
-/// Verdana (the same Bitstream Vera design) for DejaVu Sans, Arial for Open Sans. Keyed by file
-/// stem or family name, lower case without spaces, hyphens or underscores.
-const PORTABLE_FONTS: [(&str, &str); 39] = [
-    ("liberationsans", "arial.ttf"),
-    ("liberationsansregular", "arial.ttf"),
-    ("liberationsansbold", "arialbd.ttf"),
-    ("liberationsansitalic", "ariali.ttf"),
-    ("liberationsansbolditalic", "arialbi.ttf"),
-    ("liberationsansnarrow", "arialn.ttf"),
-    ("liberationsansnarrowregular", "arialn.ttf"),
-    ("liberationserif", "times.ttf"),
-    ("liberationserifregular", "times.ttf"),
-    ("liberationserifbold", "timesbd.ttf"),
-    ("liberationserifitalic", "timesi.ttf"),
-    ("liberationserifbolditalic", "timesbi.ttf"),
-    ("liberationmono", "cour.ttf"),
-    ("liberationmonoregular", "cour.ttf"),
-    ("liberationmonobold", "courbd.ttf"),
-    ("liberationmonoitalic", "couri.ttf"),
-    ("liberationmonobolditalic", "courbi.ttf"),
-    ("opensans", "arial.ttf"),
-    ("opensansregular", "arial.ttf"),
-    ("opensanslight", "arial.ttf"),
-    ("opensansitalic", "ariali.ttf"),
-    ("opensanslightitalic", "ariali.ttf"),
-    ("opensansbold", "arialbd.ttf"),
-    ("opensanssemibold", "arialbd.ttf"),
-    ("opensansextrabold", "arialbd.ttf"),
-    ("opensansbolditalic", "arialbi.ttf"),
-    ("opensanssemibolditalic", "arialbi.ttf"),
-    ("opensansextrabolditalic", "arialbi.ttf"),
-    ("opensanscondensed", "arialn.ttf"),
-    ("opensanscondensedbold", "arialnb.ttf"),
-    ("opensanscondensedlight", "arialn.ttf"),
-    ("opensanscondensedlightitalic", "arialni.ttf"),
-    ("dejavusans", "verdana.ttf"),
-    ("dejavusansbold", "verdanab.ttf"),
-    ("dejavusansoblique", "verdanai.ttf"),
-    ("dejavusansboldoblique", "verdanaz.ttf"),
-    ("dejavusanscondensed", "arialn.ttf"),
-    ("dejavuserif", "times.ttf"),
-    ("dejavusansmono", "cour.ttf"),
+/// Verdana (the same Bitstream Vera design) for DejaVu Sans, Arial for Open Sans. Narrow and
+/// condensed families have none: Arial Narrow comes with Office, not with Windows, so they stay
+/// as they are and the save names them. Keyed by file stem or family name, lower case without
+/// spaces, hyphens or underscores.
+const PORTABLE_FONTS: [(&str, Option<&str>); 42] = [
+    ("liberationsans", Some("arial.ttf")),
+    ("liberationsansregular", Some("arial.ttf")),
+    ("liberationsansbold", Some("arialbd.ttf")),
+    ("liberationsansitalic", Some("ariali.ttf")),
+    ("liberationsansbolditalic", Some("arialbi.ttf")),
+    ("liberationsansnarrow", None),
+    ("liberationsansnarrowregular", None),
+    ("liberationsansnarrowbold", None),
+    ("liberationsansnarrowitalic", None),
+    ("liberationsansnarrowbolditalic", None),
+    ("liberationserif", Some("times.ttf")),
+    ("liberationserifregular", Some("times.ttf")),
+    ("liberationserifbold", Some("timesbd.ttf")),
+    ("liberationserifitalic", Some("timesi.ttf")),
+    ("liberationserifbolditalic", Some("timesbi.ttf")),
+    ("liberationmono", Some("cour.ttf")),
+    ("liberationmonoregular", Some("cour.ttf")),
+    ("liberationmonobold", Some("courbd.ttf")),
+    ("liberationmonoitalic", Some("couri.ttf")),
+    ("liberationmonobolditalic", Some("courbi.ttf")),
+    ("opensans", Some("arial.ttf")),
+    ("opensansregular", Some("arial.ttf")),
+    ("opensanslight", Some("arial.ttf")),
+    ("opensansitalic", Some("ariali.ttf")),
+    ("opensanslightitalic", Some("ariali.ttf")),
+    ("opensansbold", Some("arialbd.ttf")),
+    ("opensanssemibold", Some("arialbd.ttf")),
+    ("opensansextrabold", Some("arialbd.ttf")),
+    ("opensansbolditalic", Some("arialbi.ttf")),
+    ("opensanssemibolditalic", Some("arialbi.ttf")),
+    ("opensansextrabolditalic", Some("arialbi.ttf")),
+    ("opensanscondensed", None),
+    ("opensanscondensedbold", None),
+    ("opensanscondensedlight", None),
+    ("opensanscondensedlightitalic", None),
+    ("dejavusans", Some("verdana.ttf")),
+    ("dejavusansbold", Some("verdanab.ttf")),
+    ("dejavusansoblique", Some("verdanai.ttf")),
+    ("dejavusansboldoblique", Some("verdanaz.ttf")),
+    ("dejavusanscondensed", None),
+    ("dejavuserif", Some("times.ttf")),
+    ("dejavusansmono", Some("cour.ttf")),
 ];
 
-/// The Windows font a text style's TrueType `font` (file or family name) is written as with
-/// `portableFonts`, or `None` when AutoCAD can use it as it is.
-pub fn portable_font(font: &str) -> Option<&'static str> {
+/// The entry of [`PORTABLE_FONTS`] for a text style's TrueType `font` (file or family name):
+/// `None` when AutoCAD on Windows has the font.
+fn non_portable(font: &str) -> Option<Option<&'static str>> {
     let name = font.trim().rsplit(['/', '\\']).next().unwrap_or_default().to_lowercase();
     let stem = name.strip_suffix(".ttf").or_else(|| name.strip_suffix(".otf")).unwrap_or(&name);
     let key: String = stem.chars().filter(|c| !matches!(c, ' ' | '-' | '_')).collect();
     PORTABLE_FONTS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
 }
 
-/// The text styles whose font [`portable_font`] replaces: (style name, font).
-fn non_portable_fonts(d: &cadcraft_doc::Drawing) -> Vec<(String, String)> {
-    d.text_styles.iter().filter(|st| portable_font(&st.font).is_some()).map(|st| (st.name.clone(), st.font.clone())).collect()
+/// The Windows font a text style's TrueType `font` (file or family name) is written as with
+/// `portableFonts`, or `None` when AutoCAD can use it as it is or Windows has no stand-in for it.
+pub fn portable_font(font: &str) -> Option<&'static str> {
+    non_portable(font).flatten()
+}
+
+/// The text styles whose fonts AutoCAD on Windows doesn't install: (style name, font). With
+/// `portable` (`portableFonts`), only those that keep such a font because Windows has no
+/// stand-in for it.
+fn non_portable_fonts(d: &cadcraft_doc::Drawing, portable: bool) -> Vec<(String, String)> {
+    d.text_styles
+        .iter()
+        .filter(|st| match non_portable(&st.font) {
+            Some(stand_in) => !portable || stand_in.is_none(),
+            None => false,
+        })
+        .map(|st| (st.name.clone(), st.font.clone()))
+        .collect()
 }
 
 /// Whether `path` names a DXF file (or has no extension, which saves as DXF).
@@ -651,15 +671,18 @@ fn report_not_saved(s: &mut Session, r: &mut Value, lost: &std::collections::BTr
 
 /// The command-line notice for text styles whose fonts AutoCAD on Windows doesn't install, or
 /// `None` when there are none.
-fn non_portable_fonts_message(fonts: &[(String, String)]) -> Option<String> {
+fn non_portable_fonts_message(fonts: &[(String, String)], portable: bool) -> Option<String> {
     if fonts.is_empty() {
         return None;
     }
-    let list: Vec<String> = fonts.iter().map(|(style, font)| format!("{style} ({font})")).collect();
-    Some(format!(
-        "Text styles use fonts AutoCAD on Windows doesn't install, which it replaces: {}. SAVEAS with portableFonts writes Windows fonts instead.",
-        list.join(", ")
-    ))
+    let list = fonts.iter().map(|(style, font)| format!("{style} ({font})")).collect::<Vec<_>>().join(", ");
+    Some(if portable {
+        format!("Text styles keep fonts AutoCAD on Windows doesn't install and has no stand-in for, which it replaces: {list}.")
+    } else {
+        format!(
+            "Text styles use fonts AutoCAD on Windows doesn't install, which it replaces: {list}. SAVEAS with portableFonts writes Windows fonts instead."
+        )
+    })
 }
 
 /// Save, then report the entities the file couldn't keep (nothing is dropped silently) and the
@@ -670,13 +693,13 @@ fn save_reporting(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> R
     let opts = save_options("save", p).unwrap_or_default();
     let version = opts.version.unwrap_or_else(|| drawing_version(s, &path));
     let lost = s.doc().map(|d| not_saved_as(d, version)).unwrap_or_default();
-    let fonts = if opts.portable_fonts { Vec::new() } else { s.doc().map(non_portable_fonts).unwrap_or_default() };
+    let fonts = s.doc().map(|d| non_portable_fonts(d, opts.portable_fonts)).unwrap_or_default();
     let mut r = run(s, p)?;
     if r.get("path").and_then(Value::as_str).is_some_and(drops_unknown) {
         report_not_saved(s, &mut r, &lost);
     }
     if r.get("path").and_then(Value::as_str).is_some_and(is_drawing_file)
-        && let Some(msg) = non_portable_fonts_message(&fonts)
+        && let Some(msg) = non_portable_fonts_message(&fonts, opts.portable_fonts)
     {
         s.echo(msg);
         if let Some(o) = r.as_object_mut() {

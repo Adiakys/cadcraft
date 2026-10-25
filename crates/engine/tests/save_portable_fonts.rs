@@ -59,3 +59,30 @@ fn saving_names_the_fonts_and_portable_fonts_replaces_them_in_the_file() {
     assert!(s.execute("saveas", &json!({ "path": path("bad.dxf"), "portableFonts": "yes" })).is_err());
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn narrow_fonts_have_no_windows_stand_in_and_are_still_named() {
+    // Arial Narrow comes with Office, not with Windows: narrow and condensed families keep their
+    // font, and the save names them whether or not portableFonts is set.
+    for font in ["Liberation Sans Narrow", "LiberationSansNarrow-Bold.ttf", "OpenSans-CondensedBold.ttf", "DejaVuSansCondensed.ttf"] {
+        assert_eq!(portable_font(font), None, "{font}");
+    }
+    let mut s = session();
+    let d = s.doc_mut().unwrap();
+    d.text_styles.push(TextStyle { name: "Tight".into(), font: "Liberation Sans Narrow".into(), ..Default::default() });
+    let dir = std::env::temp_dir().join(format!("cadcraft-narrow-fonts-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = |name: &str| dir.join(name).to_string_lossy().to_string();
+
+    let r = s.execute("saveas", &json!({ "path": path("keep.dxf") })).unwrap();
+    let named: Vec<&str> = r["nonPortableFonts"].as_array().unwrap().iter().filter_map(|f| f["style"].as_str()).collect();
+    assert_eq!(named, ["Notes", "Titles", "Tight"]);
+
+    let r = s.execute("saveas", &json!({ "path": path("portable.dxf"), "portableFonts": true })).unwrap();
+    assert_eq!(r["nonPortableFonts"], json!([{ "style": "Tight", "font": "Liberation Sans Narrow" }]));
+    assert!(s.log.last().is_some_and(|l| l.contains("no stand-in") && l.contains("Tight (Liberation Sans Narrow)")), "{:?}", s.log);
+    let file = std::fs::read_to_string(dir.join("portable.dxf")).unwrap();
+    assert!(file.contains("Liberation Sans Narrow") && !file.contains("arialn"), "kept, not replaced by an Office font");
+    assert!(file.contains("verdana.ttf"), "the others are still replaced");
+    let _ = std::fs::remove_dir_all(&dir);
+}

@@ -1097,9 +1097,11 @@ fn entity_extras(kind: &str, tags: &[Tag], h: Handle, k: &mut EntityKind, rx: &m
         // CADCraft's VPFROZEN xdata wins; otherwise the layer handles of group 331 (DXF 2004 and
         // later) or 341 (DXF 2000).
         ("VIEWPORT", EntityKind::Viewport(v)) if v.frozen_layers.is_empty() => {
+            // Each layer once, in file order; a set keeps a long list linear.
+            let mut seen = std::collections::HashSet::new();
             for t in tags.iter().take_while(|t| t.code < 1000).filter(|t| t.code == 331 || t.code == 341) {
                 if let Some(name) = rx.layers.get(&t.str().trim().to_ascii_uppercase())
-                    && !v.frozen_layers.contains(name)
+                    && seen.insert(name.as_str())
                 {
                     v.frozen_layers.push(name.clone());
                 }

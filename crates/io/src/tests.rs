@@ -708,6 +708,39 @@ fn viewport_frozen_layers_read_from_331_without_xdata() {
 }
 
 #[test]
+fn many_viewport_frozen_layers_are_read_once_each_in_file_order() {
+    // A viewport freezing thousands of layers, each listed twice in group 331 without the
+    // CADCraft xdata: every layer once, in file order (a set keeps the read linear).
+    let mut d = sample();
+    let names: Vec<String> = (0..4000).map(|i| format!("L{i}")).collect();
+    for n in &names {
+        d.layers.push(Layer { name: n.clone(), ..Layer::default() });
+    }
+    let vp = Viewport {
+        center: Vec3::new(5.0, 4.0, 0.0),
+        width: 8.0,
+        height: 6.0,
+        view_center: Vec2::new(5.0, 2.5),
+        view_height: 12.0,
+        id: 2,
+        frozen_layers: names.clone(),
+        on: true,
+        ..Viewport::default()
+    };
+    d.add(&Space::Paper("Layout1".into()), Common::default(), EntityKind::Viewport(vp)).unwrap();
+    let p = pairs(&write_dxf(&d));
+    let r = vp_record(&p, "2");
+    let x = p[r.clone()].iter().position(|(c, _)| c == "1001").unwrap() + r.start;
+    let mut q: Vec<(String, String)> = p[..x].to_vec();
+    let again: Vec<(String, String)> = p[r.start..x].iter().filter(|(c, _)| c == "331").cloned().collect();
+    assert_eq!(again.len(), names.len());
+    q.extend(again);
+    q.extend(p[r.end..].iter().cloned());
+    let back = read_dxf(join(&q).as_bytes()).unwrap();
+    assert_eq!(viewport_frozen(&back, 2), names);
+}
+
+#[test]
 fn viewport_frozen_layers_read_from_341_as_dxf_2000_writes_them() {
     let (_, p) = frozen_vp_dxf();
     let r = vp_record(&p, "2");
