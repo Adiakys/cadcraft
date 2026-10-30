@@ -87,9 +87,8 @@ pub(super) fn ensure_list(app: &mut CadApp, xf: &Xf, views: &[(Bounds2, f64)], c
         use std::hash::{Hash, Hasher};
         let mut s = std::collections::hash_map::DefaultHasher::new();
         split.hash(&mut s);
-        // A 3D view of model space, or another visual style, draws another list.
+        // A 3D view of model space draws another list.
         xf.projection.map(|m| m.m.map(|r| r.map(f64::to_bits))).hash(&mut s);
-        st.visual_style.hash(&mut s);
         if split.is_none()
             && let Some((h, vp)) = st.active_viewport()
         {
@@ -146,10 +145,7 @@ pub(super) fn ensure_list(app: &mut CadApp, xf: &Xf, views: &[(Bounds2, f64)], c
         transparency: app.session.settings.transparency_display,
         skip_viewport: split,
         cancel: None,
-        // Shaded in plan view too: the faces seen from above.
-        projection: xf.projection.or_else(|| st.visual_style.shading().0.then_some(Mat4::IDENTITY)),
-        shaded: st.visual_style.shading().0,
-        shaded_edges: st.visual_style.shading().1,
+        projection: xf.projection,
     };
     if view_only {
         let t = Tokens::get();

@@ -77,10 +77,10 @@ fn orbit_follows_drags_until_enter() {
     s.cmdline("3dorbit").unwrap();
     assert!(s.orbit_active());
     // From the plan view, a drag starts looking from the south and tilts down to the model.
-    s.orbit(0.0, -100.0).unwrap();
+    s.drag_view(0.0, -100.0).unwrap();
     let d = s.state().unwrap().view_dir;
     assert!(d.y < 0.0 && d.z > 0.0 && d.z < 1.0, "{d:?}");
-    s.orbit(200.0, 0.0).unwrap();
+    s.drag_view(200.0, 0.0).unwrap();
     assert_ne!(s.state().unwrap().view_dir, d);
     s.cmdline("").unwrap();
     assert!(!s.orbit_active());
@@ -132,7 +132,7 @@ fn tiled_model_viewports_stay_in_plan() {
     // Split model space: the tiles draw in plan, so a 3D view is refused, and so is an orbit.
     let mut s = session_with_a_column();
     s.execute("-vports", &json!({"option": "2"})).unwrap();
-    assert!(s.model_tiled());
+    assert!(!s.can_view_3d());
     for (cmd, p) in [("vpoint", json!({"preset": "swiso"})), ("vpoint.front", json!({})), ("3dorbit", json!({"azimuth": 30}))] {
         let e = s.execute(cmd, &p).unwrap_err();
         assert!(e.to_string().contains("single model viewport"), "{cmd}: {e}");
@@ -147,10 +147,10 @@ fn tiled_model_viewports_stay_in_plan() {
     s.execute("-vports", &json!({"option": "single"})).unwrap();
     s.execute("vpoint", &json!({"preset": "swiso"})).unwrap();
     assert!(s.execute("-vports", &json!({"option": "2"})).is_err());
-    assert!(!s.model_tiled());
+    assert!(s.can_view_3d());
     s.execute("plan", &json!({})).unwrap();
     s.execute("-vports", &json!({"option": "2"})).unwrap();
-    assert!(s.model_tiled());
+    assert!(!s.can_view_3d());
 }
 
 #[test]

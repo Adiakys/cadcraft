@@ -30,7 +30,7 @@ pub(super) fn draw_tiles(app: &CadApp, ui: &egui::Ui, tiles: &[(Rect, cadcraft_e
         if let Some(list) = &app.canvas.list {
             draw_list(&p, &xf, list, bg, app.session.settings.lwdisplay);
         }
-        viewport_label(&p, *r, app.session.view_name(), app.session.state().map_or("2D Wireframe", |st| st.visual_style.label()));
+        viewport_label(&p, *r, app.session.view_name());
     }
     let p = ui.painter();
     for (r, tile) in tiles {
@@ -60,14 +60,13 @@ pub(super) fn draw_ucs_icon(p: &egui::Painter, rect: Rect) {
     p.text(o + vec2(0.0, -70.0), egui::Align2::CENTER_BOTTOM, crate::tl!("Y"), f, t.canvas_ink);
 }
 
-/// The view label: the model view's name ([`cadcraft_engine::Session::view_name`]) and the visual
-/// style.
-pub(super) fn viewport_label(p: &egui::Painter, rect: Rect, view: &str, style: &str) {
+/// The view label, with the model view's name ([`cadcraft_engine::Session::view_name`]).
+pub(super) fn viewport_label(p: &egui::Painter, rect: Rect, view: &str) {
     let t = Tokens::get();
     let at = pos2(rect.left() + 10.0, rect.top() + 8.0);
-    let label = match (view, style) {
-        ("Top", "2D Wireframe") => crate::tl!("+  |  Top  |  2D Wireframe").to_string(),
-        (v, s) => format!("+  |  {}  |  {}", crate::i18n::t(v), crate::i18n::t(s)),
+    let label = match view {
+        "Top" => crate::tl!("+  |  Top  |  2D Wireframe").to_string(),
+        v => format!("+  |  {}  |  {}", crate::i18n::t(v), crate::tl!("2D Wireframe")),
     };
     p.text(at, egui::Align2::LEFT_TOP, label, crate::theme::small(), t.canvas_ink);
 }

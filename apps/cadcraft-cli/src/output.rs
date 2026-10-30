@@ -1,7 +1,7 @@
 use super::args::Framing;
 use super::error::Result;
 use cadcraft_engine::doc::Space;
-use cadcraft_engine::geom::{Bounds2, Mat4, Vec2, Vec3};
+use cadcraft_engine::geom::{Bounds2, Mat4, Vec2};
 use cadcraft_engine::{Session, View};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -119,32 +119,21 @@ pub(crate) fn export_window(s: &Session, framing: Framing, before: Option<&[(u64
     }
 }
 
-/// The active drawing's 3D model view as an image of the current view draws it, or `None` in plan
-/// view.
-fn current_view3d(s: &Session) -> Option<cadcraft_io::View3d> {
-    let st = s.state().ok()?;
-    let projection = Mat4::view(st.view_dir, Vec3::ZERO, 0.0);
-    if projection.is_plan() {
-        return None;
-    }
-    let (shaded, shaded_edges) = st.visual_style.shading();
-    Some(cadcraft_io::View3d { projection, shaded, shaded_edges })
-}
-
-/// [`export_window`] and the 3D view the image is drawn in: the current view's when the window is
-/// the current view (a 3D view's window is in its view coordinates), else the plan.
+/// [`export_window`] and the 3D view (WCS → view coordinates) the image is drawn in: the model
+/// view's when the window is the current view (a 3D view's window is in its view coordinates),
+/// else none (plan).
 pub(crate) fn export_frame(
     s: &Session,
     framing: Framing,
     before: Option<&[(u64, Option<View>)]>,
-) -> Result<(Option<Bounds2>, Option<cadcraft_io::View3d>), OutputError> {
+) -> Result<(Option<Bounds2>, Option<Mat4>), OutputError> {
     let window = export_window(s, framing, before)?;
     let current = match framing {
         Framing::Current => true,
         Framing::Auto => window.is_some(),
         Framing::Extents | Framing::Window(_) => false,
     };
-    Ok((window, if current { current_view3d(s) } else { None }))
+    Ok((window, if current { s.state().ok().and_then(|st| st.model_view()) } else { None }))
 }
 
 /// Write `bytes` to `out` through the engine's atomic writer (an exclusively created sibling file
@@ -160,9 +149,12 @@ pub(crate) fn export(s: &Session, out: &Path, io: &mut Streams) -> Result {
     export_framed(s, out, None, None, io)
 }
 
-pub(crate) fn export_framed(s: &Session, out: &Path, window: Option<Bounds2>, view: Option<cadcraft_io::View3d>, io: &mut Streams) -> Result {
-    let d = s.doc()?;
-    let bytes = cadcraft_io::write_view(d, out, window, view.as_ref())?;
+/// Write the drawing to `out`: a drawing file as SAVE writes it (with its 3D view), an image of
+/// model space framed by `window` and drawn in `projection`.
+pub(crate) fn export_framed(s: &Session, out: &Path, window: Option<Bounds2>, projection: Option<Mat4>, io: &mut Streams) -> Result {
+    let d = cadcraft_engine::cmd::file::drawing_to_write(s, &out.to_string_lossy())?;
+    let d: &cadcraft_engine::doc::Drawing = &d;
+    let bytes = cadcraft_io::write_framed(d, out, window, projection)?;
     write_atomic(out, &bytes)?;
     io.errln(format_args!("wrote {} ({} bytes)", out.display(), bytes.len()));
     if cadcraft_engine::cmd::file::drops_unknown(out) {

@@ -211,14 +211,12 @@ fn display_plot_of_a_3d_view_reaches_the_plotter() {
         String::from_utf8(super::super::file::base64_decode(r["data"].as_str().unwrap()).unwrap()).unwrap()
     };
     // Plan view: no 3D view, and the caller's is dropped.
-    let text = opts(&mut s, json!({"layout": "Model", "plotArea": "display", "viewDir": [1, 1, 1], "visualStyle": "shaded"}));
-    assert!(!text.contains("viewDir") && !text.contains("visualStyle"), "{text}");
+    let text = opts(&mut s, json!({"layout": "Model", "plotArea": "display", "viewDir": [1, 1, 1]}));
+    assert!(!text.contains("viewDir"), "{text}");
     s.execute("vpoint", &json!({"preset": "swiso"})).unwrap();
-    s.execute("vscurrent", &json!({"style": "shadedwithedges"})).unwrap();
     let dir = s.state().unwrap().view_dir;
     let text = opts(&mut s, json!({"layout": "Model", "plotArea": "display"}));
     assert!(text.contains(&format!(r#""viewDir":{}"#, json!([dir.x, dir.y, dir.z]))), "{text}");
-    assert!(text.contains(r#""visualStyle":"shadedwithedges""#), "{text}");
     // The other plot areas plot the plan.
     for area in ["extents", "limits"] {
         let text = opts(&mut s, json!({"layout": "Model", "plotArea": area, "viewDir": [1, 1, 1]}));

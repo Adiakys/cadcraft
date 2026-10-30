@@ -824,10 +824,8 @@ fn run_plot(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
         // The plotter's 3D view: set only here, for a display plot of a 3D model view (whose
         // window is in that view's coordinates), never taken from the caller.
         o.remove("viewDir");
-        o.remove("visualStyle");
-        if let Some((dir, style)) = display_view(s, p, &space)? {
+        if let Some(dir) = display_view(s, p, &space)? {
             o.insert("viewDir".into(), json!([dir.x, dir.y, dir.z]));
-            o.insert("visualStyle".into(), json!(style));
         }
         // Without one, the plotter uses each sheet's page setup.
         match super::plotters::plot_transparency(s, p) {
@@ -861,24 +859,15 @@ fn run_plot(s: &mut Session, p: &Value, cmd: &str) -> Result<Value> {
     }
 }
 
-/// The 3D view a `display` plot of model space draws in, as the screen shows it: the view direction
-/// and the visual style's name (`2dwireframe`, `shaded`, `shadedwithedges`). `None` in plan view
-/// and for the other plot areas.
-fn display_view(s: &Session, p: &Value, space: &Space) -> Result<Option<(cadcraft_geom::Vec3, &'static str)>> {
+/// The viewing direction a `display` plot of model space draws in, as the screen shows it; `None` in
+/// plan view and for the other plot areas.
+fn display_view(s: &Session, p: &Value, space: &Space) -> Result<Option<cadcraft_geom::Vec3>> {
     let display = str_param(p, "plotArea").is_some_and(|a| a.eq_ignore_ascii_case("display"));
     if !(display && matches!(space, Space::Model)) {
         return Ok(None);
     }
     let st = s.state()?;
-    if cadcraft_geom::Mat4::view(st.view_dir, cadcraft_geom::Vec3::ZERO, 0.0).is_plan() {
-        return Ok(None);
-    }
-    let style = match st.visual_style {
-        crate::VisualStyle::Wireframe2d => "2dwireframe",
-        crate::VisualStyle::Shaded => "shaded",
-        crate::VisualStyle::ShadedWithEdges => "shadedwithedges",
-    };
-    Ok(Some((st.view_dir, style)))
+    Ok(st.model_view().map(|_| st.view_dir))
 }
 
 /// The model-space rectangle a plot of `plotArea` covers: `extents` (default) plots everything,

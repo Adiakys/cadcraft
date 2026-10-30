@@ -4,10 +4,8 @@ use super::display::{DPrim, DisplayList, Kind, PlotText, VIEWPORT_CONTENT};
 use super::draw::entity;
 #[cfg(not(target_arch = "wasm32"))]
 use super::pipeline::PARALLEL_CHUNK;
-use super::pipeline::{Options, faces_first, style_table, top_ctx, with_point_view};
-use super::project;
+use super::pipeline::{Options, style_table, top_ctx, with_point_view};
 use super::{Bounds2, Builder, Ctx, Drawing, Entity, EntityKind, Handle, MAX_BLOCK_EXPANSION, Mat3, Space, Vec2, clip, paper, pen, plotstyle};
-use cadcraft_geom::Mat4;
 
 /// Upper bound on viewports drawn per layout (hostile files).
 pub(crate) const MAX_VIEWPORTS: usize = 256;
@@ -69,16 +67,8 @@ pub fn viewport_content(d: &Drawing, space: &Space, handle: Handle, area: Bounds
     }
     let opts = &with_point_view(d, space, opts);
     let styler = style_table(d, space, opts, false).map(|t| plotstyle::Styler::new(d, t));
-    let mut b = Builder {
-        list: DisplayList::default(),
-        opts,
-        plotting: false,
-        styles: styler.as_ref(),
-        named: None,
-        shared_budget: None,
-        transparency: 0,
-        faces: Vec::new(),
-    };
+    let mut b =
+        Builder { list: DisplayList::default(), opts, plotting: false, styles: styler.as_ref(), named: None, shared_budget: None, transparency: 0 };
     contents(&mut b, d, vp, area, &Clip::Rect(area), paper::unit_mm_of(d, handle));
     b.list
 }
@@ -106,15 +96,12 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
     // PSLTSCALE on: model-space dashes are scaled so they measure the same on paper as in
     // paper space, whatever the viewport scale.
     let lt_factor = if d.header.i64("PSLTSCALE", 1) != 0 { 1.0 / s } else { 1.0 };
-    // A 3D view: model space → its view coordinates → paper. The window above is in view
-    // coordinates then, so objects aren't culled by their plan bounds.
-    let view = vp.view3d.map(|v| Mat4::from_mat3(&xf).mul(&v.matrix()));
-    let ctx = || Ctx { lt_factor, view, ..top_ctx(d, xf, VIEWPORT_CONTENT, &vp.frozen_layers, &vp.layer_colors) };
+    let ctx = || Ctx { lt_factor, ..top_ctx(d, xf, VIEWPORT_CONTENT, &vp.frozen_layers, &vp.layer_colors) };
     let seen = |me: &Entity| {
         if matches!(me.kind, EntityKind::Viewport(_)) {
             return false;
         }
-        if view.is_some() || matches!(me.kind, EntityKind::Ray(_) | EntityKind::XLine(_)) {
+        if matches!(me.kind, EntityKind::Ray(_) | EntityKind::XLine(_)) {
             return true;
         }
         let eb = cadcraft_doc::entity_bounds(d, me, 0);
@@ -132,7 +119,6 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
         named: None,
         shared_budget: Some(&budget),
         transparency: 0,
-        faces: Vec::new(),
     };
     #[cfg(not(target_arch = "wasm32"))]
     let parallel = !b.plotting && b.styles.is_none() && d.model.len() >= 2 * PARALLEL_CHUNK;
@@ -145,7 +131,7 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
             use rayon::prelude::*;
             let ents: Vec<&std::sync::Arc<Entity>> = d.model.iter().collect();
             let opts = b.opts;
-            let parts: Vec<(DisplayList, Vec<project::ShadedFace>)> = ents
+            let parts: Vec<DisplayList> = ents
                 .par_chunks(PARALLEL_CHUNK)
                 .map(|chunk| {
                     let mut part = Builder {
@@ -156,18 +142,16 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
                         named: None,
                         shared_budget: Some(&budget),
                         transparency: 0,
-                        faces: Vec::new(),
                     };
                     let c = ctx();
                     for me in chunk.iter().filter(|me| seen(me)) {
                         entity(&mut part, &c, me);
                     }
-                    (part.list, part.faces)
+                    part.list
                 })
                 .collect();
-            for (part, faces) in parts {
+            for part in parts {
                 append(&mut sub.list, part);
-                sub.faces.extend(faces);
             }
         }
     } else {
@@ -176,7 +160,6 @@ fn contents(b: &mut Builder, d: &Drawing, vp: &cadcraft_doc::Viewport, area: Bou
             entity(&mut sub, &c, me);
         }
     }
-    sub.list = faces_first(std::mem::take(&mut sub.faces), std::mem::take(&mut sub.list));
     // Plotted text glyphs move to the layout's list; their outlines carry the glyph's index there
     // in their handle's high half until clipped (see `take_viewport_layers`).
     for t in std::mem::take(&mut sub.list.texts) {

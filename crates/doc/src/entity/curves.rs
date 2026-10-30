@@ -91,30 +91,27 @@ impl PolyfaceMesh {
     /// The faces as 3D faces (what EXPLODE makes). Faces with fewer than three vertices or an
     /// index outside the vertex list are skipped.
     pub fn faces3d(&self) -> Vec<Face3d> {
-        let mut out = Vec::new();
-        for f in &self.faces {
-            let mut corners: Vec<Vec3> = Vec::with_capacity(4);
-            let mut hidden = 0u8;
-            let mut ok = true;
-            for &ix in f.iter().filter(|&&ix| ix != 0) {
-                let at = usize::try_from(ix.unsigned_abs()).ok().and_then(|n| n.checked_sub(1));
-                let Some(p) = at.and_then(|n| self.vertices.get(n)) else {
-                    ok = false;
-                    break;
-                };
-                if ix < 0 {
-                    hidden |= 1 << corners.len();
-                }
-                corners.push(*p);
+        self.faces.iter().filter_map(|f| self.face3d(f)).collect()
+    }
+    /// One face record as a 3D face: `None` when it names fewer than three vertices or one
+    /// outside the vertex list.
+    pub fn face3d(&self, f: &[i32; 4]) -> Option<Face3d> {
+        let mut corners: Vec<Vec3> = Vec::with_capacity(4);
+        let mut hidden = 0u8;
+        for &ix in f.iter().filter(|&&ix| ix != 0) {
+            let at = usize::try_from(ix.unsigned_abs()).ok().and_then(|n| n.checked_sub(1));
+            let p = *at.and_then(|n| self.vertices.get(n))?;
+            if ix < 0 {
+                hidden |= 1 << corners.len();
             }
-            match (ok, corners.as_slice()) {
-                // A triangle's closing edge is the 3DFACE's fourth (the third is degenerate).
-                (true, [a, b, c]) => out.push(Face3d { corners: [*a, *b, *c, *c], hidden_edges: hidden | if hidden & 4 != 0 { 8 } else { 0 } }),
-                (true, [a, b, c, d]) => out.push(Face3d { corners: [*a, *b, *c, *d], hidden_edges: hidden }),
-                _ => {}
-            }
+            corners.push(p);
         }
-        out
+        match corners.as_slice() {
+            // A triangle's closing edge is the 3DFACE's fourth (the third is degenerate).
+            [a, b, c] => Some(Face3d { corners: [*a, *b, *c, *c], hidden_edges: hidden | if hidden & 4 != 0 { 8 } else { 0 } }),
+            [a, b, c, d] => Some(Face3d { corners: [*a, *b, *c, *d], hidden_edges: hidden }),
+            _ => None,
+        }
     }
 }
 

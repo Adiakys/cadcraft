@@ -30,30 +30,6 @@ pub use dxf_read::entity_from_groups;
 pub use dxf_write::entity_groups;
 pub use pdf::{PdfOptions, pdf, plot};
 
-/// A 3D view of model space for an image export or plot, drawn as the screen shows it: WCS → view
-/// coordinates ([`Mat4::view`]; the export window is in view coordinates) and the visual style.
-/// `None` where one is taken means the plan view. Layouts are always drawn in plan.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct View3d {
-    pub projection: Mat4,
-    /// Fill 3D faces and meshes (the Shaded visual style), see [`cadcraft_render::Options::shaded`].
-    pub shaded: bool,
-    /// With `shaded`, draw their edges too (Shaded with Edges).
-    pub shaded_edges: bool,
-}
-
-impl View3d {
-    /// `opts` drawing `space` in this view (model space only; `view` `None` leaves `opts` as is).
-    pub fn apply(view: Option<&View3d>, space: &Space, opts: cadcraft_render::Options) -> cadcraft_render::Options {
-        match view {
-            Some(v) if matches!(space, Space::Model) => {
-                cadcraft_render::Options { projection: Some(v.projection), shaded: v.shaded, shaded_edges: v.shaded_edges, ..opts }
-            }
-            _ => opts,
-        }
-    }
-}
-
 /// How a drawing is saved as DXF or DWG.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SaveOptions {
@@ -105,7 +81,7 @@ pub fn read(bytes: &[u8], name: impl AsRef<Path>) -> Result<Drawing> {
 /// model space fitted to its extents. DXF and DWG are written in the drawing's version
 /// ([`save_version`]), DXF as ASCII.
 pub fn write(d: &Drawing, name: impl AsRef<Path>) -> Result<Vec<u8>> {
-    write_framed(d, name, None)
+    write_framed(d, name, None, None)
 }
 
 /// Like [`write`], with the DXF/DWG version and binary DXF chosen by `opts`. Binary applies to
@@ -130,28 +106,23 @@ pub fn write_with(d: &Drawing, name: impl AsRef<Path>, opts: &SaveOptions) -> Re
             cadcraft_dwg::dxf_to_dwg_as(dxf_write::dwg_bridge(d, version).as_bytes(), version.code()).map_err(IoError::Format)
         }
         _ if opts.binary => Err(IoError::Format(format!("binary output is for DXF files, not `{}`", ext(name)))),
-        _ => write_framed(d, name, None),
+        _ => write_framed(d, name, None, None),
     }
 }
 
 /// Like [`write`], but image formats (PNG, SVG, PDF) show `window` (a model-space rectangle in
 /// drawing units, centred and scaled to fit the image without distortion) instead of the
 /// extents. Formats that are not images (DXF, DWG) ignore the window. The window is checked with
-/// [`check_window`].
-pub fn write_framed(d: &Drawing, name: impl AsRef<Path>, window: Option<Bounds2>) -> Result<Vec<u8>> {
-    write_view(d, name, window, None)
-}
-
-/// Like [`write_framed`], with images drawing model space in `view` (`None`: plan), the window in
-/// its view coordinates: the current view of a 3D model space, as the screen shows it.
-pub fn write_view(d: &Drawing, name: impl AsRef<Path>, window: Option<Bounds2>, view: Option<&View3d>) -> Result<Vec<u8>> {
+/// [`check_window`]. With `projection` (a 3D view of model space, WCS → view coordinates), images
+/// draw model space in that view and `window` is in its view coordinates.
+pub fn write_framed(d: &Drawing, name: impl AsRef<Path>, window: Option<Bounds2>, projection: Option<Mat4>) -> Result<Vec<u8>> {
     let name = name.as_ref();
     // A drawing template (.dwt) is DWG content.
     let format = Format::from_path(name);
     if format == Some(Format::Dwt) {
         let mut dwg = name.as_os_str().to_owned();
         dwg.push(".dwg");
-        return write_framed(d, PathBuf::from(dwg), None);
+        return write_framed(d, PathBuf::from(dwg), None, None);
     }
     if let Some(w) = &window
         && is_image(name)
@@ -160,9 +131,9 @@ pub fn write_view(d: &Drawing, name: impl AsRef<Path>, window: Option<Bounds2>, 
     }
     match format {
         Some(Format::Dxf | Format::Dwg) => write_with(d, name, &SaveOptions::default()),
-        Some(Format::Svg) => Ok(svg::export_view(d, &Space::Model, window, view, true).into_bytes()),
-        Some(Format::Png) => png_view_framed(d, &Space::Model, 2400, 1600, window, view),
-        Some(Format::Pdf) => pdf::pdf(d, &Space::Model, &PdfOptions { compress: true, window, view: view.copied(), ..PdfOptions::default() }),
+        Some(Format::Svg) => Ok(svg::export_window_with(d, &Space::Model, window, true, projection).into_bytes()),
+        Some(Format::Png) => png_framed(d, &Space::Model, 2400, 1600, window, projection),
+        Some(Format::Pdf) => pdf::pdf(d, &Space::Model, &PdfOptions { compress: true, window, projection, ..PdfOptions::default() }),
         _ => Err(IoError::Unsupported(ext(name))),
     }
 }
@@ -197,19 +168,14 @@ pub fn check_window(w: &Bounds2) -> Result<()> {
 
 /// Render a space to PNG, fitted to its extents.
 pub fn png(d: &Drawing, space: &Space, width: u32, height: u32) -> Result<Vec<u8>> {
-    png_framed(d, space, width, height, None)
+    png_framed(d, space, width, height, None, None)
 }
 
 /// Render a space to PNG showing `window` (centred, fitted without margin), or fitted to its
 /// extents (5% margin) when `window` is `None`. Objects are drawn with their transparency, as on
-/// screen.
-pub fn png_framed(d: &Drawing, space: &Space, width: u32, height: u32, window: Option<Bounds2>) -> Result<Vec<u8>> {
-    png_view_framed(d, space, width, height, window, None)
-}
-
-/// [`png_framed`] with model space drawn in `view` (`None`: plan; see [`write_view`]).
-pub fn png_view_framed(d: &Drawing, space: &Space, width: u32, height: u32, window: Option<Bounds2>, view: Option<&View3d>) -> Result<Vec<u8>> {
-    let opts = View3d::apply(view, space, cadcraft_render::Options { transparency: true, ..cadcraft_render::Options::default() });
+/// screen; with `projection`, model space in that 3D view ([`write_framed`]).
+pub fn png_framed(d: &Drawing, space: &Space, width: u32, height: u32, window: Option<Bounds2>, projection: Option<Mat4>) -> Result<Vec<u8>> {
+    let opts = cadcraft_render::Options { transparency: true, projection, ..cadcraft_render::Options::default() };
     let list = cadcraft_render::build(d, space, &opts);
     let view = png_view(&list.bounds, width, height, window);
     cadcraft_render::raster::render_png(&list, &view, &cadcraft_render::raster::RasterOptions::default())

@@ -155,7 +155,10 @@ fn a_model_view_keeps_its_3d_direction_and_target() {
     assert_eq!(get("Iso").center, Vec2::new(0.5, -1.5));
     assert_eq!(get("Top").view3d, None);
     // Through DWG too.
-    let dwg = cadcraft_io::write(&d, "v.dwg").expect("dwg");
-    let back = cadcraft_io::read(&dwg, "v.dwg").expect("reopen dwg");
-    assert_eq!(back.views.iter().find(|v| v.name == "Iso").and_then(|v| v.view3d), view3d);
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let dwg = cadcraft_io::write(&d, "v.dwg").expect("dwg");
+        let back = cadcraft_io::read(&dwg, "v.dwg").expect("reopen dwg");
+        assert_eq!(back.views.iter().find(|v| v.name == "Iso").and_then(|v| v.view3d), view3d);
+    }
 }

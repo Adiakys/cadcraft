@@ -170,7 +170,8 @@ pub(crate) enum ViewMode {
     Extents,
     /// The current view, as last set by zoom, pan or view.set (a freshly opened drawing's view is
     /// its extents plus a 10% margin); a 3D view (vpoint, 3dorbit…) is drawn as the screen shows
-    /// it, in its visual style, while the other framings draw model space in plan
+    /// it. The default framing does too when the steps changed the view; Extents and Window draw
+    /// model space in plan
     Current,
 }
 

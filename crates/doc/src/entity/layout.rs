@@ -25,7 +25,8 @@ pub struct Viewport {
     /// Display on (MVIEW ON/OFF). An off viewport shows its border but no model space.
     #[serde(default = "yes")]
     pub on: bool,
-    /// A 3D view of model space (`view_center` is then in its view coordinates); `None`: plan view.
+    /// A 3D view of model space as the file has it (kept through a save, drawn in plan); `None`:
+    /// plan view.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub view3d: Option<ViewDir>,
 }
@@ -44,9 +45,12 @@ impl ViewDir {
     pub fn matrix(&self) -> cadcraft_geom::Mat4 {
         cadcraft_geom::Mat4::view(self.dir, self.target, 0.0)
     }
-    /// Whether it differs from the plan view of the WCS, which `None` stands for.
-    pub fn is_3d(&self) -> bool {
-        !(self.target == Vec3::ZERO && self.matrix().is_plan())
+    /// The unit viewing direction of a 3D view: `None` for a plan view or a direction that isn't a
+    /// finite, non-zero vector (a hostile file).
+    pub fn dir(&self) -> Option<Vec3> {
+        let len = self.dir.len();
+        let usable = len.is_finite() && len > 1e-12 && self.target.is_finite();
+        (usable && !cadcraft_geom::Mat4::view(self.dir, Vec3::ZERO, 0.0).is_plan()).then(|| self.dir * (1.0 / len))
     }
 }
 

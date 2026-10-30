@@ -504,13 +504,12 @@ pub(super) fn polyline_entity(recs: &[(String, Vec<Tag>)], i: &mut usize, t: &T)
     let c = common(t);
     let mut extra: Vec<EntityKind> = Vec::new();
     let k = if flags & 64 != 0 {
-        // Face indices outside 16 bits name no vertex: the face is skipped when drawn.
-        let faces: Vec<[i32; 4]> = faces.iter().map(|f| f.map(|ix| i32::try_from(ix).unwrap_or(i32::MAX))).collect();
-        let vertices: Vec<Vec3> = pts.iter().map(|p| p.0).collect();
-        // Only faces whose indices name its vertices are kept: a broken one isn't written back.
-        let n = vertices.len();
-        let mesh = PolyfaceMesh { vertices, faces: faces.into_iter().filter(|f| face_names_vertices(f, n)).collect() };
-        if mesh.faces3d().is_empty() {
+        // Face records that name a missing vertex (or fewer than three) are dropped: they draw
+        // nothing and would be written back broken. A mesh left with no face is skipped.
+        let mut mesh = PolyfaceMesh { vertices: pts.iter().map(|p| p.0).collect(), faces: Vec::new() };
+        let kept = faces.iter().map(|f| f.map(|ix| i32::try_from(ix).unwrap_or(i32::MAX))).filter(|f| mesh.face3d(f).is_some()).collect();
+        mesh.faces = kept;
+        if mesh.faces.is_empty() {
             return None;
         }
         EntityKind::PolyfaceMesh(mesh)
@@ -574,13 +573,6 @@ pub(super) fn insert_attribs(recs: &[(String, Vec<Tag>)], i: &mut usize, ins_lay
 
 /// Quads of an M×N polygon mesh (71/72, or the smoothed 73/74 when the vertex count matches
 /// those), closed in M by bit 1 and in N by bit 32. Vertices run row by row.
-/// Whether a polyface face record names 3 or 4 of the mesh's `n` vertices (1-based indices, a
-/// negative one for a hidden edge, 0 for an unused corner), as [`PolyfaceMesh::faces3d`] draws it.
-fn face_names_vertices(f: &[i32; 4], n: usize) -> bool {
-    let used: Vec<i32> = f.iter().copied().filter(|&ix| ix != 0).collect();
-    (3..=4).contains(&used.len()) && used.iter().all(|ix| usize::try_from(ix.unsigned_abs()).is_ok_and(|k| (1..=n).contains(&k)))
-}
-
 fn mesh_faces(verts: &[Vec3], t: &T, flags: i64) -> Vec<Face3d> {
     let dims = |a: i32, b: i32| Some((usize::try_from(t.i(a)?).ok()?, usize::try_from(t.i(b)?).ok()?));
     let fits = |(m, n): (usize, usize)| m >= 2 && n >= 2 && m.checked_mul(n).is_some_and(|mn| mn <= verts.len());

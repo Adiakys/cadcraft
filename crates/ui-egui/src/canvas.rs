@@ -26,7 +26,7 @@ mod widgets;
 use cursor::{draw_crosshair, draw_snap_marker, draw_tracking, effective_point, override_cursor};
 use cycle::{CycleList, cycle_badge, cycle_click, cycle_list, over_canvas_menu, shift_space_cycle};
 pub(crate) use draw::{Look, draw_highlight, draw_list};
-use draw::{drag_on_gpu, draw_drag_gpu, draw_highlight_gpu, draw_list_gpu, list_mesh_key, selection_area_fill};
+use draw::{draw_drag_gpu, draw_highlight_gpu, draw_list_gpu, list_mesh_key, selection_area_fill};
 use dyn_boxes::dynamic_input;
 pub(crate) use dyn_boxes::length_units;
 use grid::draw_grid;
@@ -72,7 +72,7 @@ impl Xf {
         let c = self.rect.center();
         pos2(c.x + ((p.x - self.center.x) * self.scale) as f32, c.y - ((p.y - self.center.y) * self.scale) as f32)
     }
-    fn screen_to_view(&self, p: Pos2) -> Vec2 {
+    pub(crate) fn screen_to_view(&self, p: Pos2) -> Vec2 {
         let c = self.rect.center();
         Vec2::new(self.center.x + f64::from(p.x - c.x) / self.scale, self.center.y - f64::from(p.y - c.y) / self.scale)
     }
@@ -281,7 +281,7 @@ fn navigate_canvas(app: &mut CadApp, ui: &mut egui::Ui, nav: &Navigation<'_>) ->
     // 3DORBIT: dragging turns the view.
     if nav.response.dragged_by(egui::PointerButton::Primary) && app.session.orbit_active() {
         let d = nav.response.drag_delta();
-        let _ = app.session.orbit(f64::from(d.x), f64::from(d.y));
+        let _ = app.session.drag_view(f64::from(d.x), f64::from(d.y));
     }
     if p.pressed_primary
         && let Some(at) = p.hover_pos
@@ -317,16 +317,16 @@ fn handle_scroll_zoom(app: &mut CadApp, ui: &mut egui::Ui, nav: &Navigation<'_>,
         && wheel != 0.0
         && let Some(at) = p.hover_pos
     {
+        // About the point under the cursor, in view coordinates (where the view's centre is).
         let factor = app.session.wheel_zoom_factor(f64::from(wheel));
-        let about = nav.xf.to_world(at);
-        let _ = app.session.zoom_about(factor, about);
+        let _ = app.session.zoom_about(factor, nav.xf.screen_to_view(at));
     }
     let pinch = ui.input(|i| crate::animation::zoom_delta(i, &opts, app.shows_animations()));
     if inside
         && (pinch - 1.0).abs() > 1e-4
         && let Some(at) = p.hover_pos
     {
-        let _ = app.session.zoom_about(f64::from(pinch), nav.xf.to_world(at));
+        let _ = app.session.zoom_about(f64::from(pinch), nav.xf.screen_to_view(at));
     }
 }
 
@@ -504,7 +504,9 @@ fn paint_pointer_overlay(
     let view = frame.view;
     // Acquired tracking points and the polar / tracking paths under the cursor.
     if app.canvas.cursor.is_some() {
-        draw_tracking(painter, &xf, &app.session.tracking.acquired, app.canvas.track.as_ref(), view.height * 4.0);
+        // Lines reach past the screen, also where a 3D view foreshortens the XY plane.
+        let far = xf.world_bounds().width().max(xf.world_bounds().height()).max(view.height) * 4.0;
+        draw_tracking(painter, &xf, &app.session.tracking.acquired, app.canvas.track.as_ref(), far);
     }
     if let (Some(hit), Some(_)) = (app.canvas.snap, app.canvas.cursor) {
         draw_snap_marker(painter, xf.to_screen(hit.point), &hit);
@@ -518,7 +520,7 @@ fn paint_pointer_overlay(
     if app.ui.show_viewcube && sheet.is_none() {
         draw_viewcube(app, ui, rect);
     }
-    viewport_label(painter, rect, app.session.view_name(), app.session.state().map_or("2D Wireframe", |st| st.visual_style.label()));
+    viewport_label(painter, rect, app.session.view_name());
     // Typing and Escape reach the command line even when its overlay is hidden.
     crate::cmdline::keyboard(app, ui.ctx());
     // Command line overlay.
@@ -717,8 +719,7 @@ fn collect_prompt_clicks(app: &mut CadApp, ui: &egui::Ui, context: PromptClickCo
     // and eframe hands a slow frame's clicks over together, which egui reports as one.
     let point_prompt = app.session.current_prompt().is_some_and(|p| cadcraft_engine::pointmod::accepts(&p))
         && app.session.pending_window.is_none()
-        && !app.session.realtime_zoom_active()
-        && !app.session.orbit_active();
+        && !app.session.realtime_zoom_active();
     let pressed_primary = context.primary_clicked || (point_prompt && context.response.drag_stopped_by(egui::PointerButton::Primary));
     if point_prompt && context.inside && pressed_primary && !context.middle_down && app.cmd.options.is_none() && app.cmd.buffer.is_empty() {
         let releases: Vec<egui::Pos2> = ui.input(|i| {
@@ -1110,7 +1111,9 @@ fn paint_canvas(frame: CanvasPaint<'_>) {
     }
     // Rubber band preview of the active command.
     // `xf` is the space being edited: paper space, or model space inside the active viewport.
-    let drag = match (app.canvas.cursor, drag_on_gpu(app.canvas.gpu.is_some(), &xf)) {
+    // The GPU drag moves the objects' list by the command's WCS matrix: in a 3D view, whose list is
+    // in view coordinates, the session's transformed copies are drawn instead.
+    let drag = match (app.canvas.cursor, app.canvas.gpu.is_some() && xf.projection.is_none()) {
         (Some(c), true) => app.session.drag(c),
         _ => None,
     };
@@ -1133,19 +1136,18 @@ fn paint_canvas(frame: CanvasPaint<'_>) {
     }
     // Pending selection window.
     if let (Some(pw), Some(c)) = (app.session.pending_window, raw_world) {
-        let a = xf.to_screen(pw.corner);
-        let b = xf.to_screen(c);
-        let r = Rect::from_two_pos(a, b);
-        let crossing = c.x < pw.corner.x;
+        // The box selected on the WCS XY plane, as it shows (a parallelogram in a 3D view).
+        let (a, b) = (pw.corner, c);
+        let pts: Vec<Pos2> = [a, Vec2::new(b.x, a.y), b, Vec2::new(a.x, b.y), a].iter().map(|q| xf.to_screen(*q)).collect();
+        let crossing = app.session.crossing(a, b).unwrap_or(false);
         if let Some(fill) = selection_area_fill(&app.session.settings, crossing) {
-            painter.rect_filled(r, 0.0, fill);
+            painter.add(Shape::convex_polygon(pts[..4].to_vec(), fill, Stroke::NONE));
         }
         let st = Stroke::new(1.0, if crossing { t.crossing_stroke } else { t.window_stroke });
         if crossing {
-            let pts = vec![r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
             painter.extend(Shape::dashed_line(&pts, st, 5.0, 3.0));
         } else {
-            painter.rect_stroke(r, 0.0, st, egui::StrokeKind::Middle);
+            painter.add(Shape::line(pts, st));
         }
     }
     paint_pointer_overlay(

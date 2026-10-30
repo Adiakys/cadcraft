@@ -223,7 +223,7 @@ fn polyface_faces(d: &Drawing) -> Vec<Face3d> {
 }
 
 #[test]
-fn polyface_and_polygon_mesh_polylines_become_faces_not_bogus_vertices() {
+fn polyface_and_polygon_mesh_polylines_read_as_meshes_and_faces_not_bogus_vertices() {
     let p = |x: f64, y: f64, z: f64| Vec3::new(x, y, z);
     // Polyface: four vertices, a quad, a triangle whose third edge is hidden, and faces with an
     // out-of-range index or only two vertices (skipped).

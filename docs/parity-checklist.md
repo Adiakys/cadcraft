@@ -4,13 +4,13 @@
 
 Menu-breadth parity: a reference menu item counts as covered when a CADCraft command is registered under the same menu label. It measures breadth, not depth; see [target-app-parity.md](target-app-parity.md) for the weighted assessment.
 
-**Menu breadth: 312 / 491 items (64%)** · 462 registered commands.
+**Menu breadth: 309 / 491 items (63%)** · 458 registered commands.
 
 | Menu | Items | Covered | % |
 |---|---|---|---|
 | File | 22 | 13 | 59% |
 | Edit | 13 | 12 | 92% |
-| View | 75 | 51 | 68% |
+| View | 75 | 48 | 64% |
 | Insert | 11 | 5 | 45% |
 | Format | 27 | 26 | 96% |
 | Tools | 85 | 66 | 78% |
@@ -39,10 +39,13 @@ Menu-breadth parity: a reference menu item counts as covered when a CADCraft com
 - View > 3D Views > Plan View > Current UCS
 - View > 3D Views > Plan View > Named UCS
 - View > Hide
+- View > Visual Styles > 2D Wireframe
 - View > Visual Styles > Wireframe
 - View > Visual Styles > Hidden
 - View > Visual Styles > Realistic
 - View > Visual Styles > Conceptual
+- View > Visual Styles > Shaded
+- View > Visual Styles > Shaded with Edges
 - View > Visual Styles > Shades of Gray
 - View > Visual Styles > Sketchy
 - View > Visual Styles > X-Ray

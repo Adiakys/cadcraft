@@ -125,10 +125,8 @@ fn save(s: &mut Session, name: &str, window: Option<Bounds2>, snapshot: bool) ->
     };
     // The current view of a 3D model space keeps its direction (its centre is in view
     // coordinates); a window is picked on the XY plane, a plan view.
-    let view3d = match (window, st.projection()) {
-        (None, Some(_)) if !in_viewport => Some(cadcraft_doc::ViewDir { dir: st.view_dir, target: cadcraft_geom::Vec3::ZERO }),
-        _ => None,
-    };
+    let view3d =
+        (window.is_none() && st.projection().is_some()).then_some(cadcraft_doc::ViewDir { dir: st.view_dir, target: cadcraft_geom::Vec3::ZERO });
     let replaced = find(&st.doc.views, name).map(|v| v.name.clone());
     let d = s.doc_mut()?;
     let layer_state = snapshot.then(|| {
@@ -179,9 +177,9 @@ fn restore(s: &mut Session, name: &str) -> Result<Value> {
         None => {
             // A model space view: into the active MSPACE viewport, else on the Model tab. A 3D
             // view is the Model tab's (layout viewports keep their own direction).
-            let in_3d = v.view3d.filter(|v3| v3.is_3d() && v3.dir.is_finite() && v3.dir.len() > 1e-12 && v3.target.is_finite());
+            let in_3d = v.view3d.and_then(|v3| Some((v3.dir()?, v3.target)));
             // Refused before anything changes (the tab, the selection).
-            if in_3d.is_some() && s.model_tiled() {
+            if in_3d.is_some() && s.doc().is_ok_and(crate::view::tiled) {
                 return Err(EngineError::Other(format!(
                     "View \"{}\" is a 3D view: 3D views need a single model viewport (VPORTS Single first).",
                     v.name
@@ -197,15 +195,15 @@ fn restore(s: &mut Session, name: &str) -> Result<Value> {
             if on_model_tab {
                 // Its direction (plan for a plan view), the centre moved from relative to its
                 // target to the view coordinates the editor uses (target at the origin).
-                let dir = in_3d.map_or(cadcraft_geom::Vec3::Z, |v3| v3.dir * (1.0 / v3.dir.len()));
-                if let Some(v3) = in_3d {
-                    let t = cadcraft_geom::Mat4::view(dir, cadcraft_geom::Vec3::ZERO, 0.0).apply(v3.target);
+                let dir = in_3d.map_or(cadcraft_geom::Vec3::Z, |(dir, _)| dir);
+                if let Some((dir, target)) = in_3d {
+                    let t = cadcraft_geom::Mat4::view(dir, cadcraft_geom::Vec3::ZERO, 0.0).apply(target);
                     let moved = center + cadcraft_geom::Vec2::new(t.x, t.y);
                     if moved.is_finite() {
                         center = moved;
                     }
                 }
-                st.view_dir = dir;
+                st.set_view_dir(dir);
             }
             let aspect = st.zoom_aspect(w / h.max(1.0)).max(1e-9);
             st.set_zoom_frame(View { center, height: v.height.max(v.width / aspect) });

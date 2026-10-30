@@ -101,12 +101,16 @@ struct Ctx<'a> {
     block_pstyle: Option<usize>,
     /// Transparency (percent) of the block reference being expanded, for `ByBlock`.
     block_transparency: u8,
-    /// In a 3D view, the transform from this context's coordinates to the list ([`project`]):
-    /// it gives `xf` for each object's plane. `None` in plan view.
+    /// In a 3D view, this context's coordinates → the list's ([`project`]); `None` in plan view.
     view: Option<Mat4>,
 }
 
 impl Ctx<'_> {
+    /// Drawing units of the list per unit of this context: the scale of `xf`, or in a 3D view the
+    /// largest one (an object's plane is foreshortened across the view, never along it).
+    fn scale(&self) -> f64 {
+        if self.view.is_some() { max_scale(&self.xf) } else { self.xf.scale_factor() }
+    }
     /// A layer's colour, honouring the viewport's override.
     fn layer_color(&self, name: &str) -> Option<Color> {
         if let Some((_, c)) = self.vp_colors.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)) {
@@ -129,8 +133,6 @@ struct Builder<'a> {
     shared_budget: Option<&'a std::sync::atomic::AtomicUsize>,
     /// Transparency (percent) of the entity being drawn.
     transparency: u8,
-    /// Faces of a shaded 3D view, drawn back to front before everything else ([`finish`]).
-    faces: Vec<project::ShadedFace>,
 }
 
 /// Upper bound on the block contents drawn per display list (each block reference, MINSERT copy

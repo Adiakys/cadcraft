@@ -1,6 +1,5 @@
 use super::ctx::Ctx;
 use super::{Bounds2, Drawing, Entity, EntityKind, Handle, HashMap, Layout, Vec2, Vec3, VportConfig, VportTile, W, dxf_ext};
-use cadcraft_doc::Space;
 
 /// Layouts with viewports but without the paper-space viewport (id 1, the sheet itself), keyed
 /// by their first viewport. AutoCAD and DWG take a layout's first viewport as its paper-space
@@ -61,36 +60,19 @@ pub(super) fn paper_view(w: &mut W, d: &Drawing, e: &Entity, owner: &str, cx: &C
     w.s(1000, dxf_ext::PAPER_VIEW);
 }
 
-/// The VPORT table: the `*Active` model space tiles (one viewport on the extents when there is no
-/// tiled configuration) and the saved configurations, each tile a record, the current one first.
+/// The VPORT table: the `*Active` model space tiles as the drawing has them (tiled viewports, or a
+/// single one with the editor's 3D view), else one viewport on the extents; then the saved
+/// configurations, each tile a record, the current one first.
 pub(super) fn vport_table(w: &mut W, d: &Drawing, ext: Bounds2) {
-    // A single *Active viewport keeps its 3D view, on the extents seen from it.
-    let view3d = d.vports.iter().find(|c| c.is_active() && c.tiles.len() == 1).and_then(|c| c.tiles.first()).and_then(|t| t.view3d);
-    let seen = match view3d {
-        // What the view draws, objects off the XY plane included (as ZOOM Extents frames it).
-        Some(v) if !ext.is_empty() => {
-            let tolerance = (ext.width().max(ext.height()) / 1000.0).max(1e-9);
-            let opts = cadcraft_render::Options { projection: Some(v.matrix()), tolerance, ..cadcraft_render::Options::default() };
-            let drawn = cadcraft_render::build(d, &Space::Model, &opts).bounds;
-            if drawn.is_empty() {
-                let m = v.matrix().plane(0.0);
-                Bounds2::from_points(ext.corners().map(|p| m.apply(p)))
-            } else {
-                drawn
-            }
-        }
-        _ => ext,
-    };
     let single = VportTile {
         min: Vec2::ZERO,
         max: Vec2::new(1.0, 1.0),
-        center: if seen.is_empty() { Vec2::new(6.0, 4.5) } else { seen.center() },
-        height: if seen.is_empty() { 9.0 } else { (seen.height().max(seen.width() / 1.6) * 1.1).max(1e-6) },
+        center: if ext.is_empty() { Vec2::new(6.0, 4.5) } else { ext.center() },
+        height: if ext.is_empty() { 9.0 } else { (ext.height() * 1.1).max(1e-6) },
         aspect: 1.6,
-        view3d,
+        view3d: None,
     };
-    let tiled = d.vports.iter().find(|c| c.is_active() && c.tiles.len() > 1);
-    let mut records: Vec<(&str, &VportTile)> = match tiled {
+    let mut records: Vec<(&str, &VportTile)> = match d.vports.iter().find(|c| c.is_active() && !c.tiles.is_empty()) {
         Some(c) => c.tiles.iter().map(|t| (VportConfig::ACTIVE, t)).collect(),
         None => vec![(VportConfig::ACTIVE, &single)],
     };

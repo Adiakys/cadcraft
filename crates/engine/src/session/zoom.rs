@@ -58,7 +58,8 @@ impl Session {
         Ok(())
     }
 
-    /// Zoom by `factor` (> 1 zooms in) keeping `about` fixed on screen.
+    /// Zoom by `factor` (> 1 zooms in) keeping `about` (in view coordinates, where the view's centre
+    /// is) fixed on screen.
     pub fn zoom_about(&mut self, factor: f64, about: Vec2) -> Result<()> {
         if !(factor.is_finite() && factor > 0.0) {
             return Ok(());

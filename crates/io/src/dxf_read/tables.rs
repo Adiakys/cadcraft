@@ -111,7 +111,6 @@ fn style_font(tags: &[Tag], file: String) -> String {
     }
 }
 
-/// Load symbol tables and resolve handle references, indexing layer names for case-insensitive updates.
 /// A VIEW table record into `d.views` (replacing a view of its name); a record without a name,
 /// a size or a finite centre is skipped.
 fn named_view(t: &T, tg: &[Tag], d: &mut Drawing) {
@@ -139,6 +138,7 @@ fn named_view(t: &T, tg: &[Tag], d: &mut Drawing) {
     }
 }
 
+/// Load symbol tables and resolve handle references, indexing layer names for case-insensitive updates.
 pub(super) fn tables(tags: &[Tag], d: &mut Drawing, rx: &mut Rx) {
     let recs = records(tags);
     // STYLE handle → name, or the shape file of an unnamed shape style (linetype elements).

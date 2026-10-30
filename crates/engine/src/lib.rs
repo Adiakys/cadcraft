@@ -64,7 +64,7 @@ pub use error::{EngineError, Result};
 pub use last_used::{LastUsed, LeaderOrder, LeaderType, MLeaderOptions};
 pub use running::{PendingWindow, Running};
 pub use settings::Settings;
-pub use view::{ModelTile, ModelTiles, View, VisualStyle};
+pub use view::{ModelTile, ModelTiles, View};
 
 /// `<version> (<commit>)`, what `--version` prints after the program name in the app and the CLI.
 /// The commit comes from `CADCRAFT_BUILD_SHA` at build time, `dev` without it.

@@ -86,6 +86,7 @@ fn a_polyface_mesh_too_large_for_its_record_is_saved_as_3d_faces() {
         assert_eq!(faces, want, "binary: {binary}");
         assert!(back.model.iter().all(|e| !matches!(e.kind, EntityKind::PolyfaceMesh(_))), "binary: {binary}");
         let mut handles: Vec<_> = back.model.iter().map(|e| e.handle).collect();
+        handles.sort();
         handles.dedup();
         assert_eq!(handles.len(), back.model.iter().count(), "each face has its own handle");
     }

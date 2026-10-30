@@ -11,7 +11,7 @@ use super::{
 
 /// The layer `e` is drawn on, as an index in the layer table: layer 0 inside a block is the
 /// block reference's layer.
-pub(crate) fn entity_layer(ctx: &Ctx, e: &Entity) -> u32 {
+fn entity_layer(ctx: &Ctx, e: &Entity) -> u32 {
     let name = if e.common.layer == "0" { ctx.block_layer.as_deref().unwrap_or("0") } else { e.common.layer.as_str() };
     ctx.d.layers.iter().position(|l| l.name.eq_ignore_ascii_case(name)).and_then(|i| u32::try_from(i).ok()).unwrap_or(NO_LAYER)
 }
@@ -27,13 +27,12 @@ pub(crate) fn entity(b: &mut Builder, ctx: &Ctx, e: &Entity) {
     let (saved, saved_transparency) = (b.named, b.transparency);
     b.named = b.styles.and_then(|s| s.named_index(ctx, &e.common));
     match &ctx.view {
-        // 3D view: 3D geometry already in view coordinates, flat objects through their plane's map.
+        // A 3D view: 3D objects projected point by point, flat ones drawn through their plane's map.
         Some(v) => match project::in_view(e, v) {
-            Some(in_view) => {
-                let shaded = b.opts.shaded && project::queue_faces(b, ctx, e, &in_view);
-                if !shaded || b.opts.shaded_edges {
-                    entity_parts(b, &Ctx { xf: Mat3::IDENTITY, view: None, ..ctx.clone() }, &in_view);
-                }
+            Some(kind) => {
+                let projected = Entity { handle: e.handle, common: e.common.clone(), kind };
+                let ctx = Ctx { xf: Mat3::IDENTITY, view: None, lt_factor: ctx.lt_factor * project::scale(v), ..ctx.clone() };
+                entity_parts(b, &ctx, &projected);
             }
             None => entity_parts(b, &Ctx { xf: v.plane(project::elevation(&e.kind)), ..ctx.clone() }, e),
         },
@@ -61,7 +60,7 @@ fn entity_parts(b: &mut Builder, ctx: &Ctx, e: &Entity) {
     // model space seen through it, else the drawing's (CANNOSCALE in model space, 1:1 on paper).
     if ctx.depth == 0 && cadcraft_doc::is_annotative(e) {
         let mode = if ctx.top == VIEWPORT_CONTENT {
-            cadcraft_doc::anno_draw(e, 1.0 / ctx.xf.scale_factor().max(1e-12), ctx.d.anno_all_visible())
+            cadcraft_doc::anno_draw(e, 1.0 / ctx.scale().max(1e-12), ctx.d.anno_all_visible())
         } else {
             ctx.d.anno_draw(e)
         };
@@ -87,12 +86,12 @@ fn entity_parts(b: &mut Builder, ctx: &Ctx, e: &Entity) {
         Some(over) => over,
         None => lt,
     };
-    let tol = b.opts.tolerance / ctx.xf.scale_factor().max(1e-12);
+    let tol = b.opts.tolerance / ctx.scale().max(1e-12);
     let lw = if b.opts.lineweights { lw } else { 0.0 };
     // Stroke a polyline with the entity's linetype.
     let stroke = |b: &mut Builder, pts: &[Vec2]| match &lt {
         Some(lt) => {
-            let min = b.opts.min_dash / ctx.xf.scale_factor().max(1e-12);
+            let min = b.opts.min_dash / ctx.scale().max(1e-12);
             for dash in linetype::apply(pts, lt, ltscale, min) {
                 if dash.len() == 1 {
                     if let Some(p) = dash.first() {
@@ -156,7 +155,7 @@ fn entity_parts(b: &mut Builder, ctx: &Ctx, e: &Entity) {
                 match &lt {
                     // Dashed: each dash a filled piece of the band; dots a line across it.
                     Some(lt) => {
-                        let min = b.opts.min_dash / ctx.xf.scale_factor().max(1e-12);
+                        let min = b.opts.min_dash / ctx.scale().max(1e-12);
                         let (tris, ticks, centres) = wide::dashed(p, tol, lt, ltscale, min);
                         b.tris(ctx, rgb, &tris);
                         if hairline {
@@ -237,7 +236,7 @@ fn entity_parts(b: &mut Builder, ctx: &Ctx, e: &Entity) {
         EntityKind::MLeader(m) => draw_mleader(b, ctx, e, m, rgb, lw),
         EntityKind::Point(p) => {
             // Relative sizes follow the view: undo the block / viewport scale.
-            let view = b.opts.view_height / ctx.xf.scale_factor().max(1e-12);
+            let view = b.opts.view_height / ctx.scale().max(1e-12);
             let size = point::size(ctx.d.header.f64("PDSIZE", 0.0), view);
             let fig = point::figure(ctx.d.header.i64("PDMODE", 0), size, p.p.xy(), p.angle, tol);
             if fig.dot {
@@ -370,7 +369,7 @@ fn draw_dimension(b: &mut Builder, ctx: &Ctx, e: &Entity, dm: &cadcraft_doc::Dim
 pub(crate) fn stroke_with(b: &mut Builder, ctx: &Ctx, rgb: Ink, lw: f32, lt: Option<&cadcraft_doc::Linetype>, ltscale: f64, pts: &[Vec2]) {
     match lt {
         Some(lt) => {
-            let min = b.opts.min_dash / ctx.xf.scale_factor().max(1e-12);
+            let min = b.opts.min_dash / ctx.scale().max(1e-12);
             for dash in linetype::apply(pts, lt, ltscale, min) {
                 match dash.as_slice() {
                     [p] => b.point(ctx, rgb, *p),

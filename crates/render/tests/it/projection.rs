@@ -90,99 +90,52 @@ fn isometric_view_of_a_cube() {
     assert!(y1 - y0 > 1.0, "height {}", y1 - y0);
 }
 
-fn face(z: f64, color: u8) -> (Common, EntityKind) {
-    let c = |x: f64, y: f64| Vec3::new(x, y, z);
-    let common = Common { color: cadcraft_color::Color::Index(color), ..Common::default() };
-    (common, EntityKind::Face3d(cadcraft_doc::Face3d { corners: [c(0.0, 0.0), c(4.0, 0.0), c(4.0, 4.0), c(0.0, 4.0)], hidden_edges: 0 }))
-}
-
 #[test]
-fn shaded_faces_are_filled_lit_and_drawn_back_to_front() {
-    use cadcraft_render::Kind;
+fn helices_and_infinite_lines_are_projected_in_3d() {
+    use cadcraft_doc::{Helix, RayLine};
+    // A helix 10 high is a column from the front, not a flat coil at z = 0.
     let mut d = Drawing::new_metric();
-    // The upper face first in the drawing: it is nearer the viewer from above, so drawn last.
-    for (z, color) in [(5.0, 1), (0.0, 5)] {
-        let (common, kind) = face(z, color);
-        d.add(&Space::Model, common, kind).unwrap();
-    }
-    d.add(&Space::Model, Common::default(), line(Vec3::new(-1.0, -1.0, 0.0), Vec3::new(5.0, -1.0, 0.0))).unwrap();
-    let iso = Mat4::view(Vec3::new(1.0, -1.0, 1.0), Vec3::ZERO, 0.0);
-    let opts = Options { projection: Some(iso), shaded: true, ..Options::default() };
-    let l = build(&d, &Space::Model, &opts);
-    let fills: Vec<_> = l.prims.iter().filter(|p| p.kind == Kind::Tris).collect();
-    assert_eq!(fills.len(), 2);
-    // Faces first, farthest first: the blue (5) ground face, then the red (1) upper face.
-    assert_eq!(l.prims[0].kind, Kind::Tris);
-    assert!(fills[0].color.2 > fills[0].color.0 && fills[1].color.0 > fills[1].color.2, "{:?}", fills.iter().map(|p| p.color).collect::<Vec<_>>());
-    // Lit: darker than the plain colour, seen at an angle.
-    assert!(fills[1].color.0 < 255);
-    // Shaded: no face edges, only the line. With edges: the faces' outlines too.
-    assert_eq!(l.prims.iter().filter(|p| p.kind == Kind::Polyline).count(), 1);
-    let edges = build(&d, &Space::Model, &Options { shaded_edges: true, ..opts.clone() });
-    assert_eq!(edges.prims.iter().filter(|p| p.kind == Kind::Polyline).count(), 9);
-    assert!(edges.prims.iter().position(|p| p.kind == Kind::Polyline) > edges.prims.iter().rposition(|p| p.kind == Kind::Tris));
-    // Without shading: no fills.
-    let wire = build(&d, &Space::Model, &Options { projection: Some(iso), ..Options::default() });
-    assert!(wire.prims.iter().all(|p| p.kind != Kind::Tris));
-}
-
-#[test]
-fn a_layout_viewport_shows_model_space_from_its_view_direction() {
-    let mut d = Drawing::new_metric();
-    // A 10 high column.
-    d.add(&Space::Model, Common::default(), line(Vec3::ZERO, Vec3::new(0.0, 0.0, 10.0))).unwrap();
-    let paper = Space::Paper(d.layouts[0].name.clone());
-    // Seen from the front at 1:1, centred on the column's middle: it stands 10 high on paper.
-    let vp = cadcraft_doc::Viewport {
-        center: Vec3::new(50.0, 50.0, 0.0),
-        width: 40.0,
-        height: 40.0,
-        view_center: cadcraft_geom::Vec2::new(0.0, 5.0),
-        view_height: 40.0,
-        id: 2,
-        view3d: Some(cadcraft_doc::ViewDir { dir: Vec3::new(0.0, -1.0, 0.0), target: Vec3::ZERO }),
-        ..cadcraft_doc::Viewport::default()
+    let helix = Helix {
+        center: Vec3::ZERO,
+        base_radius: 2.0,
+        top_radius: 2.0,
+        height: 10.0,
+        turns: 3.0,
+        start_angle: 0.0,
+        ccw: true,
+        constrain: Default::default(),
     };
-    d.add(&paper, Common::default(), EntityKind::Viewport(vp)).unwrap();
-    let l = build(&d, &paper, &Options::default());
-    // Model space drawn in a viewport isn't pickable on the layout: no handle.
-    let column: Vec<_> = l.prims.iter().filter(|p| p.handle == Handle(0)).map(|p| l.points(p)).collect();
-    assert_eq!(column.len(), 1);
-    let (a, b) = (column[0][0], column[0][1]);
-    assert!((a.x - 50.0).abs() < 1e-6 && (b.x - 50.0).abs() < 1e-6 && (a.y - 45.0).abs() < 1e-6 && (b.y - 55.0).abs() < 1e-6, "{a:?} {b:?}");
+    d.add(&Space::Model, Common::default(), EntityKind::Helix(helix)).unwrap();
+    let (_, y0, _, y1) = bounds(&d, Some(front()));
+    assert!(y0.abs() < 1e-6 && (y1 - 10.0).abs() < 1e-6, "{y0}..{y1}");
+    // A vertical construction line is vertical from the front (its direction keeps its z).
+    let mut d = Drawing::new_metric();
+    d.add(&Space::Model, Common::default(), EntityKind::XLine(RayLine { base: Vec3::new(3.0, 0.0, 0.0), dir: Vec3::Z })).unwrap();
+    let l = build(&d, &Space::Model, &Options { projection: Some(front()), ..Options::default() });
+    let dir = l.prims.iter().find(|p| matches!(p.kind, cadcraft_render::Kind::Infinite { .. })).map(|p| l.points(p)[1]).unwrap();
+    assert!(dir.x.abs() < 1e-9 && (dir.y.abs() - 1.0).abs() < 1e-9, "{dir:?}");
 }
 
 #[test]
-fn plotted_shaded_faces_keep_their_layers_and_transparency() {
-    use cadcraft_render::{Kind, build_plot};
+fn a_2d_solid_is_a_flat_object_at_its_elevation() {
+    use cadcraft_doc::Solid;
+    // A SOLID lies in a plane like a circle: from the front it is an edge at its elevation.
+    let c = |x: f64, y: f64| Vec3::new(x, y, 4.0);
     let mut d = Drawing::new_metric();
-    for name in ["Faces", "Lines"] {
-        d.layers.push(cadcraft_doc::Layer::new(name));
-    }
-    let (mut common, kind) = face(0.0, 1);
-    common.layer = "Faces".into();
-    common.transparency = cadcraft_doc::Transparency::Percent(40);
-    d.add(&Space::Model, common, kind).unwrap();
-    for x in [0.0, 2.0] {
-        let lines = Common { layer: "Lines".into(), ..Common::default() };
-        d.add(&Space::Model, lines, line(Vec3::new(x, -1.0, 0.0), Vec3::new(x + 1.0, -1.0, 0.0))).unwrap();
-    }
-    let index = |n: &str| d.layers.iter().position(|l| l.name == n).unwrap() as u32;
-    let iso = Mat4::view(Vec3::new(1.0, -1.0, 1.0), Vec3::ZERO, 0.0);
-    let opts = Options { projection: Some(iso), shaded: true, transparency: true, ..Options::default() };
-    // A plot's layers stay parallel to its primitives, the faces (drawn first) on their own.
-    let plot = build_plot(&d, &Space::Model, &opts);
-    assert_eq!(plot.prim_layers.len(), plot.prims.len());
-    assert_eq!(plot.prims.first().map(|p| p.kind), Some(Kind::Tris));
-    for (p, layer) in plot.prims.iter().zip(&plot.prim_layers) {
-        let want = if p.kind == Kind::Tris { index("Faces") } else { index("Lines") };
-        assert_eq!(*layer, want, "{p:?}");
-    }
-    // A face is as transparent as itself, not as what contains it.
-    let screen = build(&d, &Space::Model, &opts);
-    assert!(screen.prim_layers.is_empty());
-    let fill = screen.prims.iter().find(|p| p.kind == Kind::Tris).unwrap();
-    assert_eq!(fill.transparency, 40);
-    let opaque = build(&d, &Space::Model, &Options { transparency: false, ..opts.clone() });
-    assert_eq!(opaque.prims.iter().find(|p| p.kind == Kind::Tris).map(|p| p.transparency), Some(0));
+    d.add(&Space::Model, Common::default(), EntityKind::Solid(Solid { corners: [c(0.0, 0.0), c(2.0, 0.0), c(0.0, 2.0), c(2.0, 2.0)] })).unwrap();
+    let (_, y0, _, y1) = bounds(&d, Some(front()));
+    assert!((y0 - 4.0).abs() < 1e-6 && (y1 - 4.0).abs() < 1e-6, "{y0}..{y1}");
+}
+
+#[test]
+fn points_seen_edge_on_keep_their_size() {
+    use cadcraft_doc::Point;
+    // A relative point size is measured in the view, not by the foreshortened plane: from the
+    // front a point on the XY plane stays a small mark, the list's bounds stay finite and small.
+    let mut d = Drawing::new_metric();
+    d.header.set_f64("PDMODE", 3.0);
+    d.header.set_f64("PDSIZE", -5.0);
+    d.add(&Space::Model, Common::default(), EntityKind::Point(Point { p: Vec3::new(1.0, 1.0, 0.0), angle: 0.0 })).unwrap();
+    let l = build(&d, &Space::Model, &Options { projection: Some(front()), view_height: 100.0, ..Options::default() });
+    assert!(l.bounds.width() < 20.0 && l.bounds.height() < 20.0, "{:?}", l.bounds);
 }

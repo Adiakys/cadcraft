@@ -222,7 +222,7 @@ impl EntityKind {
                 vec![Prim::Fill(vec![c[0].xy(), c[1].xy(), c[3].xy(), c[2].xy()])]
             }
             EntityKind::Face3d(f) => f.visible_edges().into_iter().map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a.xy(), b.xy())))).collect(),
-            // A mesh hides the edges inside its surface.
+            // Each face's visible edges (an edge flagged hidden, by a negative index, isn't drawn).
             EntityKind::PolyfaceMesh(m) => {
                 m.faces3d().iter().flat_map(Face3d::visible_edges).map(|(a, b)| Prim::Seg(Segment::Line(GLine::new(a.xy(), b.xy())))).collect()
             }

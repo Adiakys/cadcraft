@@ -269,16 +269,16 @@ mod tests {
     fn current_view_export_draws_the_3d_view() {
         let mut s = sample_session();
         let before = model_views(&s);
-        let cmds = [("vpoint", json!({"preset": "swiso"})), ("vscurrent", json!({"style": "shaded"})), ("zoom", json!({"mode": "extents"}))];
+        let cmds = [("vpoint", json!({"preset": "swiso"})), ("zoom", json!({"mode": "extents"}))];
         for (id, p) in &cmds {
             s.execute(id, p).unwrap();
         }
         let (w, view) = export_frame(&s, Framing::Current, Some(&before)).unwrap();
         let (w, view) = (w.unwrap(), view.unwrap());
-        assert!(view.shaded && !view.shaded_edges && !view.projection.is_plan());
+        assert!(!view.is_plan());
         assert_eq!(export_frame(&s, Framing::Auto, Some(&before)).unwrap(), (Some(w), Some(view)));
         // The window is in view coordinates and shows the whole drawing as the 3D view draws it.
-        let opts = cadcraft_engine::render::Options { projection: Some(view.projection), ..Default::default() };
+        let opts = cadcraft_engine::render::Options { projection: Some(view), ..Default::default() };
         let drawn = cadcraft_engine::render::build(s.doc().unwrap(), &Space::Model, &opts).bounds;
         assert!(w.contains(drawn.min) && w.contains(drawn.max), "{w:?} vs {drawn:?}");
         // The other framings draw the plan.
@@ -295,7 +295,7 @@ mod tests {
         assert_eq!(run(args, &mut Vec::new(), &mut Vec::new()), 0);
         let written = std::fs::read(&out).unwrap();
         let _ = std::fs::remove_file(&out);
-        assert_eq!(written, cadcraft_io::write_view(s.doc().unwrap(), "a.svg", Some(w), Some(&view)).unwrap());
+        assert_eq!(written, cadcraft_io::write_framed(s.doc().unwrap(), "a.svg", Some(w), Some(view)).unwrap());
     }
 
     #[test]

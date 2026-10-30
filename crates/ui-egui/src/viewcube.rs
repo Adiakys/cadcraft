@@ -119,23 +119,20 @@ pub fn show(app: &mut CadApp, ui: &mut egui::Ui, l: &Layout) {
             Some(Part::Ring) | None => {}
         }
     }
-    if resp.dragged() && pressed_on == Some(Part::Face) {
+    // A drag keeps doing what its press started, wherever the pointer goes.
+    let dragged_from = ui.input(|i| i.pointer.press_origin()).and_then(|o| l.part_at(o));
+    if resp.dragged() && dragged_from == Some(Part::Face) {
         let d = resp.drag_delta();
         let _ = app.session.drag_view(f64::from(d.x), f64::from(d.y));
     }
     // Dragging the ring turns the view with the pointer, about the cube's centre.
     if resp.dragged()
-        && pressed_on == Some(Part::Ring)
+        && dragged_from == Some(Part::Ring)
         && let Some(p1) = resp.interact_pointer_pos()
     {
         let p0 = p1 - resp.drag_delta();
         let angle = |q: Pos2| f64::from(-(q.y - c.y)).atan2(f64::from(q.x - c.x));
-        let mut delta = angle(p1) - angle(p0);
-        if delta > std::f64::consts::PI {
-            delta -= std::f64::consts::TAU;
-        } else if delta < -std::f64::consts::PI {
-            delta += std::f64::consts::TAU;
-        }
+        let delta = (angle(p1) - angle(p0) + std::f64::consts::PI).rem_euclid(std::f64::consts::TAU) - std::f64::consts::PI;
         let _ = app.session.rotate_view(-delta);
     }
     let mut action = None;

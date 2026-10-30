@@ -14,22 +14,23 @@ impl Session {
         self.active
     }
 
-    /// Append a loaded drawing, fit the view to its model extents (aspect-corrected, minimum height 1e-6) when non-empty, end a running command, make it active, bump the epoch and return its index.
+    /// Append a loaded drawing, end a running command, make it active, bump the epoch and return
+    /// its index. It opens in the 3D view its single `*Active` viewport has (that viewport is the
+    /// editor's view, not kept in the drawing: [`crate::cmd::file::drawing_to_write`] writes it
+    /// back), zoomed to the extents; otherwise in plan, fitted to its model extents
+    /// (aspect-corrected, minimum height 1e-6) when non-empty.
     pub fn open_drawing(&mut self, mut d: Drawing, title: &str, path: Option<String>) -> usize {
-        // A drawing saved in a 3D view of model space opens in it: the view is the editor's, the
-        // single *Active viewport that carries it isn't kept.
         let single = d.vports.iter().position(|c| c.is_active() && c.tiles.len() == 1);
-        let saved = single.and_then(|i| d.vports.remove(i).tiles[0].view3d);
+        let saved = single.and_then(|i| d.vports.remove(i).tiles.first().and_then(|t| t.view3d?.dir()));
         let mut st = DocState::new(d, title, path);
         let ext = st.doc.extents(&Space::Model);
-        if !ext.is_empty() {
+        if let Some(dir) = saved {
+            st.view_dir = dir;
+        } else if !ext.is_empty() {
             st.set_view_quiet(View {
                 center: ext.center(),
                 height: (ext.height().max(ext.width() * self.viewport_px.1 / self.viewport_px.0.max(1.0)) * 1.1).max(1e-6),
             });
-        }
-        if let Some(v) = saved {
-            st.view_dir = v.dir * (1.0 / v.dir.len());
         }
         self.end_running();
         self.docs.push(st);

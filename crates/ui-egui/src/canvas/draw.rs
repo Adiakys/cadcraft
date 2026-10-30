@@ -139,13 +139,6 @@ pub(super) fn draw_highlight_gpu(
     ));
 }
 
-/// Whether a command's drag is drawn by the GPU, as the objects' display list moved by the
-/// command's matrix. The matrix is a WCS transform and a 3D view's list is in view coordinates, so
-/// a 3D view draws the session's transformed copies instead ([`cadcraft_engine::Session::preview`]).
-pub(super) fn drag_on_gpu(gpu: bool, xf: &Xf) -> bool {
-    gpu && xf.projection.is_none()
-}
-
 /// Draw a MOVE/COPY/ROTATE/SCALE preview the way the drawing itself is drawn: the dragged
 /// objects are tessellated and uploaded once (again only when the drawing, the selection or the
 /// zoom band changes), and each frame only the transform in the view uniform moves. Rebuilding
@@ -177,7 +170,7 @@ pub(super) fn draw_drag_gpu(
     };
     if c.drag_key != Some(key) {
         let band_scale = 2f64.powi(band);
-        let opts = cadcraft_render::Options { transparency, ..preview_options(band_scale, xf.projection) };
+        let opts = cadcraft_render::Options { transparency, ..preview_options(band_scale, None) };
         let list = if drag.clipboard {
             cadcraft_render::build_entities(doc, clipboard.0.iter(), &opts)
         } else {
