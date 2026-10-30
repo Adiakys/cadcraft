@@ -741,6 +741,28 @@ fn many_viewport_frozen_layers_are_read_once_each_in_file_order() {
 }
 
 #[test]
+fn a_331_only_viewport_freeze_survives_open_and_save() {
+    // As AutoCAD 2026 and ezdxf write it: group 331, no CADCraft xdata. Opening and saving it,
+    // as DXF or DWG, keeps the freeze in the file (it used to be dropped on the first save).
+    let (_, p) = frozen_vp_dxf();
+    let r = vp_record(&p, "2");
+    let x = p[r.clone()].iter().position(|(c, _)| c == "1001").unwrap() + r.start;
+    let mut q: Vec<(String, String)> = p[..x].to_vec();
+    q.extend(p[r.end..].iter().cloned());
+    let opened = read_dxf(join(&q).as_bytes()).unwrap();
+    assert_eq!(viewport_frozen(&opened, 2), vec!["Walls".to_string(), "A B".to_string()]);
+    let frozen_331 = |p: &[(String, String)]| -> Vec<String> {
+        let rec = &p[vp_record(p, "2")];
+        rec.iter().filter(|(c, _)| c == "331").map(|(_, v)| v.trim().to_string()).collect()
+    };
+    let saved = pairs(&write_dxf(&opened));
+    assert_eq!(frozen_331(&saved), [layer_handle(&saved, "Walls"), layer_handle(&saved, "A B")]);
+    let dwg = write(&opened, "t.dwg").unwrap();
+    let from_dwg = pairs(&String::from_utf8_lossy(&cadcraft_dwg::dwg_to_dxf(&dwg).unwrap()));
+    assert_eq!(frozen_331(&from_dwg), [layer_handle(&from_dwg, "Walls"), layer_handle(&from_dwg, "A B")]);
+}
+
+#[test]
 fn viewport_frozen_layers_read_from_341_as_dxf_2000_writes_them() {
     let (_, p) = frozen_vp_dxf();
     let r = vp_record(&p, "2");
