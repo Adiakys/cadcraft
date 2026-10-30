@@ -77,13 +77,14 @@ pub(crate) fn queue_faces(b: &mut crate::Builder, ctx: &crate::Ctx, e: &Entity, 
         EntityKind::Solid(s) | EntityKind::Trace(s) => vec![[s.corners[0], s.corners[1], s.corners[3], s.corners[2]]],
         _ => return false,
     };
-    let (ink, _, _, _, visible, layer_transparency) = crate::resolve(ctx, e, b.plotting);
+    let (ink, _, _, _, visible, layer_transparency) = crate::props::resolve(ctx, e, b.plotting);
     if !visible {
         return true;
     }
     // Its own transparency, as `entity_parts` gives its other primitives (that runs after this).
-    let transparency = if b.opts.transparency { crate::transparency(e.common.transparency, layer_transparency, ctx.block_transparency) } else { 0 };
-    let layer = b.plotting.then(|| crate::entity_layer(ctx, e));
+    let transparency =
+        if b.opts.transparency { crate::props::transparency(e.common.transparency, layer_transparency, ctx.block_transparency) } else { 0 };
+    let layer = b.plotting.then(|| crate::draw::entity_layer(ctx, e));
     // Model space plotted through a viewport carries the layer in the handle until it is clipped
     // into the layout's list, as the entity's other primitives do.
     let handle = match layer {

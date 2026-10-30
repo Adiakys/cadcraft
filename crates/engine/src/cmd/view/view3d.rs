@@ -7,7 +7,7 @@ use cadcraft_doc::Space;
 use cadcraft_geom::{Mat4, Vec2, Vec3};
 use serde_json::{Value, json};
 
-use super::super::*;
+use super::super::{CommandSpec, bad, str_param};
 use crate::{Accept, Input, Interactive, Prompt, Result, Session, Step, View, VisualStyle};
 
 /// The preset views: name, label (the View ▸ 3D Views menu), viewing direction (towards the viewer).
