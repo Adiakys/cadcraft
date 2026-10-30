@@ -40,7 +40,7 @@ struct W {
     next: u64,
     /// Upper-case plot style name → its `ACDBPLACEHOLDER` handle (group 390 of layers and objects).
     pstyles: HashMap<String, String>,
-    /// Upper-case layer name → its LAYER table record handle (group 331 of viewports).
+    /// Upper-case layer name → its LAYER table record handle (group 331/341 of viewports).
     layers: HashMap<String, String>,
     /// Persistent reactors of boundary objects: each source object of an associative hatch →
     /// the hatches (groups `{ACAD_REACTORS 330 …}`), from [`hatch_reactors`].
@@ -111,13 +111,13 @@ pub fn write(d: &Drawing) -> String {
 
 /// The drawing's DXF tags, declaring `version` in `$ACADVER`.
 pub fn tags(d: &Drawing, version: Version) -> Vec<Tag> {
-    tags_for(d, version, version)
+    tags_for(d, version, version, false)
 }
 
 /// The R2000 DXF the DWG bridge converts to a `dwg` version DWG: its entity types are the DWG
 /// version's (MULTILEADER from 2007).
 pub(crate) fn dwg_bridge(d: &Drawing, dwg: Version) -> String {
-    let mut tags = tags_for(d, Version::R2000, dwg);
+    let mut tags = tags_for(d, Version::R2000, dwg, true);
     bridge_markers(&mut tags);
     cadcraft_dxf::write_ascii(&tags)
 }
@@ -151,5 +151,11 @@ pub fn entity_groups(d: &Drawing, e: &Entity) -> (String, Vec<Tag>) {
     entity(&mut w, d, e, "0", paper, &cx);
     let mut tags = w.t.into_iter();
     let kind = tags.next().filter(|t| t.code == 0).map(|t| t.value.as_str()).unwrap_or_default();
-    (kind, tags.take_while(|t| t.code != 0).filter(|t| t.code != 330).collect())
+    // Strings as AutoLISP sees them: `10^2`, not the file's `10^ 2`.
+    let text = matches!(kind.as_str(), "TEXT" | "ATTRIB" | "ATTDEF" | "DIMENSION");
+    let tags = tags
+        .take_while(|t| t.code != 0)
+        .filter(|t| t.code != 330)
+        .map(|t| if text && matches!(t.code, 1 | 3) { Tag::s(t.code, crate::dxf_read::mtext_dxf::unescape_carets(&t.value.as_str())) } else { t });
+    (kind, tags.collect())
 }

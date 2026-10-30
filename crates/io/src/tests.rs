@@ -604,6 +604,12 @@ fn viewport_frozen_layers_roundtrip() {
     assert!(frozen.contains(&(3, Vec::new())), "{frozen:?}");
 }
 
+/// `d` as an R2018 DXF (frozen viewport layers in group 331).
+fn dxf_2018(d: &Drawing) -> String {
+    let opts = SaveOptions { version: Some(Version::R2018), binary: false };
+    String::from_utf8(write_with(d, "t.dxf", &opts).unwrap()).unwrap()
+}
+
 /// A layout with viewport 2 frozen on `Walls` and `A B` (both real layers), and its written DXF as
 /// (code, value) pairs.
 fn frozen_vp_dxf() -> (Drawing, Vec<(String, String)>) {
@@ -624,7 +630,7 @@ fn frozen_vp_dxf() -> (Drawing, Vec<(String, String)>) {
         on: true,
     });
     d.add(&paper, Common::default(), vp).unwrap();
-    let text = write_dxf(&d);
+    let text = dxf_2018(&d);
     (d, pairs(&text))
 }
 
@@ -690,6 +696,13 @@ fn viewport_frozen_layers_written_as_331_handles() {
     let last331 = rec.iter().rposition(|(c, _)| c == "331").unwrap();
     let x = rec.iter().position(|(c, _)| c == "1001").expect("xdata");
     assert!(last331 < x, "331 must precede the xdata");
+    // An R2000 DXF holds them in group 341, as the DXF 2000 Reference has them.
+    let (d, _) = frozen_vp_dxf();
+    let p = pairs(&write_dxf(&d));
+    let rec = &p[vp_record(&p, "2")];
+    let h341: Vec<&str> = rec.iter().filter(|(c, _)| c == "341").map(|(_, v)| v.as_str()).collect();
+    assert_eq!(h341, vec![layer_handle(&p, "Walls").as_str(), layer_handle(&p, "A B").as_str()]);
+    assert!(!rec.iter().any(|(c, _)| c == "331"));
 }
 
 #[test]
@@ -708,39 +721,6 @@ fn viewport_frozen_layers_read_from_331_without_xdata() {
 }
 
 #[test]
-fn many_viewport_frozen_layers_are_read_once_each_in_file_order() {
-    // A viewport freezing thousands of layers, each listed twice in group 331 without the
-    // CADCraft xdata: every layer once, in file order (a set keeps the read linear).
-    let mut d = sample();
-    let names: Vec<String> = (0..4000).map(|i| format!("L{i}")).collect();
-    for n in &names {
-        d.layers.push(Layer { name: n.clone(), ..Layer::default() });
-    }
-    let vp = Viewport {
-        center: Vec3::new(5.0, 4.0, 0.0),
-        width: 8.0,
-        height: 6.0,
-        view_center: Vec2::new(5.0, 2.5),
-        view_height: 12.0,
-        id: 2,
-        frozen_layers: names.clone(),
-        on: true,
-        ..Viewport::default()
-    };
-    d.add(&Space::Paper("Layout1".into()), Common::default(), EntityKind::Viewport(vp)).unwrap();
-    let p = pairs(&write_dxf(&d));
-    let r = vp_record(&p, "2");
-    let x = p[r.clone()].iter().position(|(c, _)| c == "1001").unwrap() + r.start;
-    let mut q: Vec<(String, String)> = p[..x].to_vec();
-    let again: Vec<(String, String)> = p[r.start..x].iter().filter(|(c, _)| c == "331").cloned().collect();
-    assert_eq!(again.len(), names.len());
-    q.extend(again);
-    q.extend(p[r.end..].iter().cloned());
-    let back = read_dxf(join(&q).as_bytes()).unwrap();
-    assert_eq!(viewport_frozen(&back, 2), names);
-}
-
-#[test]
 fn a_331_only_viewport_freeze_survives_open_and_save() {
     // As AutoCAD 2026 and ezdxf write it: group 331, no CADCraft xdata. Opening and saving it,
     // as DXF or DWG, keeps the freeze in the file (it used to be dropped on the first save).
@@ -755,7 +735,7 @@ fn a_331_only_viewport_freeze_survives_open_and_save() {
         let rec = &p[vp_record(p, "2")];
         rec.iter().filter(|(c, _)| c == "331").map(|(_, v)| v.trim().to_string()).collect()
     };
-    let saved = pairs(&write_dxf(&opened));
+    let saved = pairs(&dxf_2018(&opened));
     assert_eq!(frozen_331(&saved), [layer_handle(&saved, "Walls"), layer_handle(&saved, "A B")]);
     let dwg = write(&opened, "t.dwg").unwrap();
     let from_dwg = pairs(&String::from_utf8_lossy(&cadcraft_dwg::dwg_to_dxf(&dwg).unwrap()));

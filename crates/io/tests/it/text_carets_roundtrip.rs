@@ -1,4 +1,4 @@
-//! Carets in TEXT, ATTDEF and DIMENSION strings are written as `^ ` and read back: AutoCAD
+//! Carets in TEXT, ATTDEF, ATTRIB and DIMENSION strings are written as `^ ` and read back: AutoCAD
 //! reads a bare `^2` in `10^2` as a control character.
 
 use cadcraft_doc::{Attrib, Common, DimKind, Dimension, Drawing, EntityKind, HAlign, Space, Text, VAlign};
@@ -86,4 +86,19 @@ fn bare_carets_from_older_files_are_kept() {
     let dxf = write_dxf(&drawing()).replace("10^ 2 m", "10^2 m");
     let back = read_dxf(dxf.as_bytes()).unwrap();
     assert_eq!(strings(&back).first().map(String::as_str), Some("10^2 m"));
+}
+
+#[test]
+fn caret_codes_stay_literal_and_entget_shows_plain_carets() {
+    // A single-line string has no line feeds or tabs: a `^J` in it stays the two characters.
+    let mut d = Drawing::new_metric();
+    d.add(&Space::Model, Common::default(), EntityKind::Text(text("A^JB 10^2"))).unwrap();
+    let dxf = write_dxf(&d);
+    assert!(dxf.contains("A^ JB 10^ 2"), "{dxf}");
+    assert_eq!(strings(&read_dxf(dxf.as_bytes()).unwrap()), ["A^JB 10^2"]);
+    // AutoLISP's entget sees the string as AutoCAD returns it, without the file's escapes.
+    let e = d.model.iter().next().unwrap();
+    let (kind, groups) = cadcraft_io::entity_groups(&d, e);
+    assert_eq!(kind, "TEXT");
+    assert!(groups.iter().any(|t| t.code == 1 && t.value.as_str() == "A^JB 10^2"), "{groups:?}");
 }

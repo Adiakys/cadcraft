@@ -86,7 +86,8 @@ pub fn deliver() -> Option<DeliverHook> {
 }
 
 /// How a drawing file is written: its version (`None`: the drawing's own, `$ACADVER`), binary
-/// instead of ASCII DXF, and text styles written with fonts AutoCAD installs ([`portable_font`]).
+/// instead of ASCII DXF, and text styles written with fonts AutoCAD installs ([`stand_in`]; this
+/// save only, the drawing keeps its fonts).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SaveAs {
     pub version: Option<Version>,
@@ -140,70 +141,37 @@ fn save_options(cmd: &str, p: &Value) -> Result<SaveAs> {
     Ok(SaveAs { version, binary, portable_fonts })
 }
 
-/// TrueType fonts of Linux and open-source systems that AutoCAD on Windows doesn't install, and
-/// the Windows font a file gets instead: the metric-compatible one for the Liberation families,
-/// Verdana (the same Bitstream Vera design) for DejaVu Sans, Arial for Open Sans. Narrow and
-/// condensed families have none: Arial Narrow comes with Office, not with Windows, so they stay
-/// as they are and the save names them. Keyed by file stem or family name, lower case without
-/// spaces, hyphens or underscores.
-const PORTABLE_FONTS: [(&str, Option<&str>); 42] = [
-    ("liberationsans", Some("arial.ttf")),
-    ("liberationsansregular", Some("arial.ttf")),
-    ("liberationsansbold", Some("arialbd.ttf")),
-    ("liberationsansitalic", Some("ariali.ttf")),
-    ("liberationsansbolditalic", Some("arialbi.ttf")),
-    ("liberationsansnarrow", None),
-    ("liberationsansnarrowregular", None),
-    ("liberationsansnarrowbold", None),
-    ("liberationsansnarrowitalic", None),
-    ("liberationsansnarrowbolditalic", None),
-    ("liberationserif", Some("times.ttf")),
-    ("liberationserifregular", Some("times.ttf")),
-    ("liberationserifbold", Some("timesbd.ttf")),
-    ("liberationserifitalic", Some("timesi.ttf")),
-    ("liberationserifbolditalic", Some("timesbi.ttf")),
-    ("liberationmono", Some("cour.ttf")),
-    ("liberationmonoregular", Some("cour.ttf")),
-    ("liberationmonobold", Some("courbd.ttf")),
-    ("liberationmonoitalic", Some("couri.ttf")),
-    ("liberationmonobolditalic", Some("courbi.ttf")),
-    ("opensans", Some("arial.ttf")),
-    ("opensansregular", Some("arial.ttf")),
-    ("opensanslight", Some("arial.ttf")),
-    ("opensansitalic", Some("ariali.ttf")),
-    ("opensanslightitalic", Some("ariali.ttf")),
-    ("opensansbold", Some("arialbd.ttf")),
-    ("opensanssemibold", Some("arialbd.ttf")),
-    ("opensansextrabold", Some("arialbd.ttf")),
-    ("opensansbolditalic", Some("arialbi.ttf")),
-    ("opensanssemibolditalic", Some("arialbi.ttf")),
-    ("opensansextrabolditalic", Some("arialbi.ttf")),
-    ("opensanscondensed", None),
-    ("opensanscondensedbold", None),
-    ("opensanscondensedlight", None),
-    ("opensanscondensedlightitalic", None),
-    ("dejavusans", Some("verdana.ttf")),
-    ("dejavusansbold", Some("verdanab.ttf")),
-    ("dejavusansoblique", Some("verdanai.ttf")),
-    ("dejavusansboldoblique", Some("verdanaz.ttf")),
-    ("dejavusanscondensed", None),
-    ("dejavuserif", Some("times.ttf")),
-    ("dejavusansmono", Some("cour.ttf")),
+/// TrueType families of Linux and open-source systems that AutoCAD on Windows doesn't install,
+/// with the Windows fonts `portableFonts` writes for their regular, bold, italic and bold italic
+/// styles: the metric-compatible ones for Liberation, Verdana (the same Bitstream Vera design) for
+/// DejaVu Sans, Arial for Open Sans. Keyed by family name, lower case without spaces, hyphens or
+/// underscores; a longer name comes before a shorter one it starts with.
+const FAMILIES: [(&str, [&str; 4]); 7] = [
+    ("liberationsans", ["arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"]),
+    ("liberationserif", ["times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"]),
+    ("liberationmono", ["cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"]),
+    ("opensans", ["arial.ttf", "arialbd.ttf", "ariali.ttf", "arialbi.ttf"]),
+    ("dejavusansmono", ["cour.ttf", "courbd.ttf", "couri.ttf", "courbi.ttf"]),
+    ("dejavusans", ["verdana.ttf", "verdanab.ttf", "verdanai.ttf", "verdanaz.ttf"]),
+    ("dejavuserif", ["times.ttf", "timesbd.ttf", "timesi.ttf", "timesbi.ttf"]),
 ];
 
-/// The entry of [`PORTABLE_FONTS`] for a text style's TrueType `font` (file or family name):
-/// `None` when AutoCAD on Windows has the font.
-fn non_portable(font: &str) -> Option<Option<&'static str>> {
+/// For a text style's TrueType `font` (file or family name) that AutoCAD on Windows doesn't
+/// install, the Windows font written instead with `portableFonts`; `Some(None)` for a narrow or
+/// condensed style, which has none (Arial Narrow comes with Office, not with Windows), and
+/// `None` for a font AutoCAD has.
+fn stand_in(font: &str) -> Option<Option<&'static str>> {
     let name = font.trim().rsplit(['/', '\\']).next().unwrap_or_default().to_lowercase();
     let stem = name.strip_suffix(".ttf").or_else(|| name.strip_suffix(".otf")).unwrap_or(&name);
     let key: String = stem.chars().filter(|c| !matches!(c, ' ' | '-' | '_')).collect();
-    PORTABLE_FONTS.iter().find(|(k, _)| *k == key).map(|(_, v)| *v)
-}
-
-/// The Windows font a text style's TrueType `font` (file or family name) is written as with
-/// `portableFonts`, or `None` when AutoCAD can use it as it is or Windows has no stand-in for it.
-pub fn portable_font(font: &str) -> Option<&'static str> {
-    non_portable(font).flatten()
+    let (family, fonts) = FAMILIES.iter().find(|(f, _)| key.starts_with(f))?;
+    let style = key.get(family.len()..).unwrap_or_default();
+    if style.contains("narrow") || style.contains("condensed") {
+        return Some(None);
+    }
+    let bold = style.contains("bold");
+    let italic = style.contains("italic") || style.contains("oblique");
+    Some(fonts.get(usize::from(bold) + 2 * usize::from(italic)).copied())
 }
 
 /// The text styles whose fonts AutoCAD on Windows doesn't install: (style name, font). With
@@ -212,10 +180,7 @@ pub fn portable_font(font: &str) -> Option<&'static str> {
 fn non_portable_fonts(d: &cadcraft_doc::Drawing, portable: bool) -> Vec<(String, String)> {
     d.text_styles
         .iter()
-        .filter(|st| match non_portable(&st.font) {
-            Some(stand_in) => !portable || stand_in.is_none(),
-            None => false,
-        })
+        .filter(|st| stand_in(&st.font).is_some_and(|f| !portable || f.is_none()))
         .map(|st| (st.name.clone(), st.font.clone()))
         .collect()
 }
@@ -225,8 +190,9 @@ fn is_dxf(path: &str) -> bool {
     Format::from_path(path) == Some(Format::Dxf)
 }
 
-/// The drawing written to `path` with `opts`: through [`IoHooks::write`] when no option is set,
-/// else through the [`write_as`] hook.
+/// The drawing written to `path` with `opts`: through the [`write_as`] hook for a version or
+/// binary DXF, else [`IoHooks::write`]; with `portable_fonts`, the text styles' fonts are
+/// replaced first.
 fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<u8>> {
     let hooks = io().ok_or_else(|| bad(cmd, "file formats are not available in this build"))?;
     if opts.binary && !is_dxf(path) {
@@ -238,7 +204,7 @@ fn write_bytes(s: &Session, cmd: &str, path: &str, opts: &SaveAs) -> Result<Vec<
     if opts.portable_fonts && is_drawing_file(path) {
         let mut copy = d.clone();
         for st in &mut copy.text_styles {
-            if let Some(f) = portable_font(&st.font) {
+            if let Some(Some(f)) = stand_in(&st.font) {
                 st.font = f.to_string();
             }
         }
@@ -692,17 +658,18 @@ fn non_portable_fonts_message(fonts: &[(String, String)], portable: bool) -> Opt
         format!("Text styles keep fonts AutoCAD on Windows doesn't install and has no stand-in for, which it replaces: {list}.")
     } else {
         format!(
-            "Text styles use fonts AutoCAD on Windows doesn't install, which it replaces: {list}. SAVEAS with portableFonts writes Windows fonts instead."
+            "Text styles use fonts AutoCAD on Windows doesn't install, which it replaces: {list}. SAVEAS {{\"portableFonts\": true}} writes the Windows fonts of those that have one."
         )
     })
 }
 
 /// Save, then report the entities the file couldn't keep (nothing is dropped silently) and the
 /// text styles whose fonts AutoCAD won't find.
-fn save_reporting(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> Result<Value>) -> Result<Value> {
+/// `options`: the save takes SAVEAS's `version`, `binary` and `portableFonts` (QSAVE doesn't).
+fn save_reporting(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> Result<Value>, options: bool) -> Result<Value> {
     // What the file will hold depends on the version it is saved as (the data store from 2013).
     let path = str_param(p, "path").map(str::to_string).or_else(|| s.state().ok().and_then(|st| st.path.clone())).unwrap_or_default();
-    let opts = save_options("save", p).unwrap_or_default();
+    let opts = if options { save_options("save", p).unwrap_or_default() } else { SaveAs::default() };
     let version = opts.version.unwrap_or_else(|| drawing_version(s, &path));
     let lost = s.doc().map(|d| not_saved_as(d, version)).unwrap_or_default();
     let fonts = s.doc().map(|d| non_portable_fonts(d, opts.portable_fonts)).unwrap_or_default();
@@ -722,11 +689,11 @@ fn save_reporting(s: &mut Session, p: &Value, run: fn(&mut Session, &Value) -> R
 }
 
 fn run_qsave_reporting(s: &mut Session, p: &Value) -> Result<Value> {
-    save_reporting(s, p, run_save)
+    save_reporting(s, p, run_save, false)
 }
 
 fn run_saveas_reporting(s: &mut Session, p: &Value) -> Result<Value> {
-    save_reporting(s, p, run_saveas)
+    save_reporting(s, p, run_saveas, true)
 }
 
 const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -884,5 +851,33 @@ mod pr193_tests {
         assert!(!st.is_dirty());
         assert_eq!((st.path.as_deref(), st.title.as_str()), (Some("a/Owned.dxf"), "Owned.dxf"));
         assert_eq!(saved("a/Owned.dxf", n)["bytes"], 6);
+    }
+}
+
+#[cfg(test)]
+mod stand_in_tests {
+    use super::stand_in;
+
+    #[test]
+    fn windows_stand_ins_by_file_or_family_name() {
+        let windows = |font: &str| stand_in(font).flatten();
+        assert_eq!(windows("DejaVuSans.ttf"), Some("verdana.ttf"));
+        assert_eq!(windows("/usr/share/fonts/truetype/LiberationSerif-Bold.ttf"), Some("timesbd.ttf"));
+        assert_eq!(windows("Liberation Mono"), Some("cour.ttf"));
+        assert_eq!(windows("LiberationMono-BoldItalic.ttf"), Some("courbi.ttf"));
+        assert_eq!(windows("OpenSans-SemiBold.ttf"), Some("arialbd.ttf"));
+        assert_eq!(windows("OpenSans-Medium.ttf"), Some("arial.ttf"));
+        assert_eq!(windows("Open Sans"), Some("arial.ttf"));
+        assert_eq!(windows("DejaVuSansMono-BoldOblique.ttf"), Some("courbi.ttf"));
+        assert_eq!(windows("DejaVuSerif-Italic.ttf"), Some("timesi.ttf"));
+        assert_eq!(windows("DejaVuSans-ExtraLight.ttf"), Some("verdana.ttf"));
+        // Narrow and condensed styles are named but have no stand-in.
+        for font in ["Liberation Sans Narrow", "LiberationSansNarrow-Bold.ttf", "OpenSans-CondensedBold.ttf", "DejaVuSansCondensed.ttf"] {
+            assert_eq!(stand_in(font), Some(None), "{font}");
+        }
+        // Fonts AutoCAD has, or names that aren't fonts.
+        for font in ["arial.ttf", "txt", "", "/", "Liberation"] {
+            assert_eq!(stand_in(font), None, "{font}");
+        }
     }
 }

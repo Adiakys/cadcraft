@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-28 · **Change:** minor (portable fonts: no stand-in for narrow families; attribute value edits refresh exported baselines) · **Target:** Autodesk AutoCAD 2027
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-30 · **Change:** minor (viewport frozen layers, text carets, portable fonts; attribute value edits refresh exported baselines) · **Target:** Autodesk AutoCAD 2027
 
 Every format AutoCAD 2027 reads or writes, with CADCraft's support, fidelity and tests. Work
 items are in [gaps.md](gaps.md#file-formats); the weighted score feeds
@@ -85,7 +85,7 @@ on read with a note, so such files no longer exceed the DXF limit (#1482). **DWG
 | HATCH gradient | yes | yes (#162, fixes #80) | |
 | SOLID, TRACE, 3DFACE | yes | yes | |
 | ACAD_TABLE | yes | yes (entity + block) | |
-| VIEWPORT | yes | yes; frozen-layer lists kept (#150), also as AutoCAD's group 331 layer handles, which other programs and the DWG converter read; read from 331 or, in DXF 2000 files, 341 | VP layer colour overrides lost (#99, PR #197) |
+| VIEWPORT | yes | yes; frozen-layer lists kept (#150), also as AutoCAD's layer handles (group 331; 341 in an R2000 DXF), which other programs and the DWG converter read; read from either | VP layer colour overrides lost (#99, PR #197) |
 | IMAGE | yes, with IMAGEDEF | yes, with IMAGEDEF and IMAGEDEF_REACTOR | no attach command or display of the picture yet (FF10) |
 | WIPEOUT | yes | yes (#147, fixes #79) | Implicit or explicit closure in memory; explicit closing point on save. Same logical grips and edit results before/after DXF/DWG round trips (#2256). |
 | MLINE (+ MLINESTYLE), HELIX, TOLERANCE | yes (#510, #420) | yes | |
@@ -140,19 +140,15 @@ our output in AutoCAD black-box.
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-30 | minor | VIEWPORT frozen layers written as group 331 (341 in an R2000 DXF) and read from either, so AutoCAD and the DWG converter see them without CADCraft xdata; a caret in a TEXT, ATTDEF, ATTRIB or DIMENSION string written as `^ ` and read back (AutoCAD showed `10^2` with a control character); saves name text styles using Linux fonts AutoCAD on Windows doesn't install, and SAVEAS `portableFonts` writes the Windows equivalents of those that have one |
 | 2026-10-26 | minor | CC-046: ATTEDIT and -ATTEDIT value changes invalidate derived justified baselines before DXF/DWG export; preserve alignment anchors, unchanged values and Aligned/Fit endpoints. Review follow-up: baseline recomputation preserves insertion elevation independently of alignment elevation. The shared writer correction also applies to justified TEXT. Independent of attribute editor UI; reverting the follow-up restores elevation loss on recomputation, while reverting the value setter restores stale XY baselines. |
 | 2026-10-25 | minor | LAYOUT SAveas (`layout.saveas`) writes a layout as a drawing template: its page setup and paper space objects, no model space objects or other layouts, and only the named objects they use |
-| 2026-10-25 | minor | SAVEAS `portableFonts`: narrow and condensed families (Liberation Sans Narrow, Open Sans Condensed, DejaVu Sans Condensed) keep their font, since Arial Narrow comes with Office rather than Windows, and the save still names them; VIEWPORT frozen layers read from 331/341 are deduplicated in linear time |
 | 2026-10-22 | minor | DXF/DWG save: angular, diametric and radial dimensions get standard DIMASSOC objects (one centre reference to the circle for radial/diametric, the definition points for angular), so AutoCAD follows their geometry; the standard objects of those kinds are read back too, without CADCraft's xdata (#1651) |
 | 2026-10-19 | minor | DXF/DWG save: angular dimension block text honors DIMDSEP, including per-dimension overrides (#1646) |
 | 2026-10-19 | minor | A file's own arrowhead blocks with standard names (AutoCAD's `_Dot`, `_DotSmall`), named only by a dimension style, are kept and saved as they were instead of being replaced by CADCraft's solids; PURGE keeps arrowhead blocks dimension styles name |
 | 2026-10-20 | minor | DIMENSION: the `*D` block's MTEXT, and the MTEXT EXPLODE leaves, hold the diameter sign as `%%c` instead of the decoded U+2300, which no SHX font has, so other programs plotted diameter dimensions in an SHX style without the sign (#1645) |
 | 2026-10-21 | minor | Proxy objects and entities keep their class through a save: group 91 renumbered to the written CLASSES (the class it names is kept), a proxy whose number names no class dropped (#1812) |
 | 2026-10-17 | minor | DWG read: DGN line style components no line style definition reaches are left out before the DXF bridge, with a read note; an 83 MB site plan with 888,483 of them (1.2 GB of DXF, over the limit) now opens (#1482) |
-| 2026-10-15 | minor | VIEWPORT frozen layers also read from group 341, as DXF 2000 files hold them |
-| 2026-10-13 | minor | VIEWPORT frozen layers written and read as group 331 (DXF Reference), not 341: AutoCAD and the DWG converter now see them, so a DWG keeps them without CADCraft xdata |
-| 2026-10-13 | minor | Saves name text styles with Linux TrueType fonts AutoCAD on Windows doesn't install; SAVEAS and document.bytes `portableFonts` write Windows fonts for them in the file, the drawing keeps its own |
-| 2026-10-13 | minor | Carets in TEXT, ATTDEF, ATTRIB and DIMENSION strings written as `^ ` and decoded on read, as MTEXT already was: AutoCAD showed `10^2` with a control character |
 | 2026-10-12 | minor | PDF output: object transparency plotted as PDF alpha (`/ExtGState` `/ca` `/CA`) when the page setup's or the plot's "Plot transparency" is on; PNG plots blend it, SVG uses `opacity`; plots without it are unchanged byte for byte |
 | 2026-10-12 | minor | DXF/DWG save: the Model layout's plot settings are written as CADCraft plots model space, drawing extents scaled to fit (PLOTSETTINGS 74 = 1, 75 = 0), instead of plot type 5 "Layout information", which other programs' Plot dialogs can't use for model space |
 | 2026-10-12 | minor | VIEWPORT frozen layers also written and read as AutoCAD's group 341 layer handles, so third-party viewers honour per-viewport freezing in DXF (DWG converter gap noted) |

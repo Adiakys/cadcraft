@@ -38,6 +38,17 @@ pub(crate) fn decode_contents(s: &str) -> String {
     out
 }
 
+/// A single-line string (TEXT, ATTDEF/ATTRIB, DIMENSION) for a DXF file: a caret as `^ `, since
+/// AutoCAD reads `^x` as a control character. Other text stays as it is.
+pub(crate) fn escape_carets(s: &str) -> String {
+    s.replace('^', "^ ")
+}
+
+/// A single-line string as read: `^ ` back to a caret; a bare `^x` (older files) stays as it is.
+pub(crate) fn unescape_carets(s: &str) -> String {
+    s.replace("^ ", "^")
+}
+
 /// Encode the contents for a DXF string: a tab as `^I`, a line feed as `^J`, a caret as `^ `;
 /// other control characters (which draw nothing) are dropped.
 pub(crate) fn encode_contents(s: &str) -> String {
