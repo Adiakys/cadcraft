@@ -102,3 +102,16 @@ fn caret_codes_stay_literal_and_entget_shows_plain_carets() {
     assert_eq!(kind, "TEXT");
     assert!(groups.iter().any(|t| t.code == 1 && t.value.as_str() == "A^JB 10^2"), "{groups:?}");
 }
+
+#[test]
+fn entget_keeps_a_dimension_style_name_as_written() {
+    // Group 3 of a DIMENSION is its style name, written as it is: only the text is unescaped.
+    let mut d = Drawing::new_metric();
+    let dm = Dimension { style: "A^ B".into(), ..dimension("10^2") };
+    d.add(&Space::Model, Common::default(), EntityKind::Dimension(dm)).unwrap();
+    let e = d.model.iter().next().unwrap();
+    let (kind, groups) = cadcraft_io::entity_groups(&d, e);
+    assert_eq!(kind, "DIMENSION");
+    assert!(groups.iter().any(|t| t.code == 1 && t.value.as_str() == "10^2"), "{groups:?}");
+    assert!(groups.iter().any(|t| t.code == 3 && t.value.as_str() == "A^ B"), "{groups:?}");
+}
